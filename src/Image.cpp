@@ -55,9 +55,12 @@ vector<vector<vector<double> > > Image::disk_imager(vector<vector<vector<double>
       double r0 = d[4];
       double dr = d[5] * r0;
       double rinner = d[6];
+      double oneorinner = 1./rinner;
       double oneodr = 1./dr;
       double oneor0pdr = 1./(r0+dr);
       double oneor0mdr = 1./(r0-dr);
+
+      double oneo4pi = 0.25/pi;
       
       for(int j=0; j<dims[0]; j++){
 	for(int k=0; k<dims[1]; k++){
@@ -68,7 +71,7 @@ vector<vector<vector<double> > > Image::disk_imager(vector<vector<vector<double>
             double temp0 = 1.+g0*g0 - 2.*g0*cosscattang[j][k][l];
             double temp1 = 1.+g1*g1 - 2.*g1*cosscattang[j][k][l];
             double temp2 = 1.+g2*g2 - 2.*g2*cosscattang[j][k][l];
-            double pfunc = w0*(1.-g0*g0)/(4*pi)/pow(temp0,1.5) + w1*(1.-g1*g1)/(4*pi)/pow(temp1,1.5) + w2*(1.-g2*g2)/(4*pi)/pow(temp2,1.5);
+            double pfunc = w0*(1.-g0*g0)*oneo4pi*pow(temp0,-1.5) + w1*(1.-g1*g1)*oneo4pi*pow(temp1,-1.5) + w2*(1.-g2*g2)*oneo4pi*pow(temp2,-1.5);
             
             // Now calculate disk density at each point
             // n = np.zeros(dims)        # all points set to zero
@@ -78,27 +81,27 @@ vector<vector<vector<double> > > Image::disk_imager(vector<vector<vector<double>
             n[j][k][l] *= dv[j][k][l];
             
             // Modify by the variation w/ z
-            n[j][k][l] *= exp(-0.5 * pow(z[j][k][l]/(d[8] * r[j][k][l]),2));
+            n[j][k][l] *= exp(-0.5 *  z[j][k][l]*z[j][k][l]/(d[8]*d[8] * r[j][k][l]*r[j][k][l]));
             n[j][k][l] /= (d[8] * sqrt(2*pi)) * r[j][k][l]; // normalize by the integral over z to maintain same density vs r
             
             // The Gaussian ring component
-            if(abs(r[j][k][l]-r0) < dr) n[j][k][l] *= exp(-0.5 * pow((r[j][k][l]-r0)*oneodr,2));
+            if(abs(r[j][k][l]-r0) < dr) n[j][k][l] *= exp(-0.5 * (r[j][k][l]-r0)*(r[j][k][l]-r0) * oneodr*oneodr);
             
 	    // The blowout component
             // Make sure it's continuous at +dr from r0
             if(r[j][k][l] > r0+dr){
 	      double temp = r[j][k][l] * oneor0pdr;
-	      n[j][k][l] *= exp(-0.5) / pow(temp,1.5);
+	      n[j][k][l] *= exp(-0.5) * pow(temp,-1.5);
 	    }
             
             // The inner truncation radius
             if(r[j][k][l] <= rinner){
-	      double rorinner = r[j][k][l]/rinner;
-	      n[j][k][l] *= pow(rorinner,3);
+	      double rorinner = r[j][k][l] * oneorinner;
+	      n[j][k][l] *= rorinner*rorinner*rorinner;
 	    }
             
             // Multiply by phase function and 1/r^2     
-            n[j][k][l] *= pfunc/(4.*pi*r[j][k][l]*r[j][k][l]);
+            n[j][k][l] *= pfunc*oneo4pi/(r[j][k][l]*r[j][k][l]);
 	  }
 	}
       }

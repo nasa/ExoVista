@@ -1,0 +1,644 @@
+import numpy as np
+import pandas as pd
+import matplotlib; matplotlib.use('agg')
+import matplotlib.pyplot as plt
+from matplotlib import patches
+from matplotlib.collections import PatchCollection
+from astropy.io import fits
+from PIL import Image
+#from src import wrapStarmap
+import time
+
+from src.constants import *
+
+lam = np.exp(np.linspace(np.log(0.3),np.log(2.5),212027))
+#lam = np.linspace(0.05,5.5,54500)
+
+path = 'R10000FITS/PHOENIX-ACES-AGSS-COND-2011_R10000FITS_Z-0.0/'
+tail = '-0.0.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits'
+
+
+# PRIORITY: BY-STAR
+# PRIORITY: SPEED AND FILESIZE OF THE STARSPOT CALCULATIONS
+
+
+def get_single_spectrum(teff,logg):
+    t1 = np.floor(teff/100)
+    g1 = np.floor(logg*2)/2
+    t2 = t1+1
+    g2 = g1+0.5
+
+    if t1<23 or t2>120 or g1<2.0 or g2>6.0:
+        print('Star out of range.')
+        exit()
+        
+    f11 = '{0:s}lte{1:s}00-{2:.2f}{3:s}'.format(path,str(int(t1)).zfill(3),g1,tail)
+    f12 = '{0:s}lte{1:s}00-{2:.2f}{3:s}'.format(path,str(int(t1)).zfill(3),g2,tail)
+    f21 = '{0:s}lte{1:s}00-{2:.2f}{3:s}'.format(path,str(int(t2)).zfill(3),g1,tail)
+    f22 = '{0:s}lte{1:s}00-{2:.2f}{3:s}'.format(path,str(int(t2)).zfill(3),g2,tail)
+    '''
+    hdul = fits.open(f11)
+    hdul.info()
+    print(hdul[0].header)
+    print(hdul[1].header)
+    print(hdul[1].data)
+    fig = plt.figure()
+    ax = fig.add_subplot()
+    ax.plot(lam,hdul[0].data[-1],'-',linewidth=1)
+    plt.show()
+    plt.savefig('starspectest.png')
+    exit()
+    '''
+    spec11 = fits.open(f11)[0].data
+    spec12 = fits.open(f12)[0].data
+    spec21 = fits.open(f21)[0].data
+    spec22 = fits.open(f22)[0].data
+
+    tf = teff/100-t1
+    gf = (logg-g1)*2
+
+    s1 = (1-gf)*spec11 + gf*spec12
+    s2 = (1-gf)*spec21 + gf*spec22
+    specf = (1-tf)*s1 + tf*s2
+    '''
+    fig = plt.figure()
+    ax = fig.add_subplot()
+    ax.plot(lam,spec11,linewidth=1,label='Typical 5500 K spectrum')
+    ax.set_xlim(0.6,1.2)
+    plt.xlabel('Wavelength (nm)')
+    plt.ylabel('Flux (cgs)')
+    plt.legend()
+    plt.savefig('PHOENIX_sample55.png')
+    exit()
+    '''
+    return specf
+
+
+def get_quiet_spectrum(star, star_area):
+    #pix = star_map_ortho(star, [], mask)
+    #npix = pix.shape[0]*pix.shape[1]
+    #f_quiet = np.sum(pix[:,:,0]) * 4/np.pi/npix 
+    f_quiet = star_area
+    spec_quiet = get_single_spectrum(star['Teff'],star['logg']) * (1-star['GranCoverage'])*f_quiet
+    spec_gran = get_single_spectrum(star['Teff']-star['GranDeltaT'],star['logg']) * star['GranCoverage']*f_quiet
+    return spec_quiet+spec_gran
+
+
+def get_combined_spectrum(star, spots, mask, star_area, lon_center=0., lat_center=0., planet=0, index=0):
+    npix = mask.shape[0]*mask.shape[1]
+    
+    '''
+    # C++ implementation of the pixelated starspot calculation -- not yet debugged or optimized
+    if 'PA' in star.head(): pa = star['PA'] * np.pi/180
+    else: pa = 0.
+    mapper = wrapStarmap.PyStarmap()
+    mapper.SetupStarmap(rad=star['rstar'], res=1800)
+    pix = mapper.star_map_ortho(pa=pa,
+                                    lon_cen=lon_center,
+                                    lat_cen=lat_center,
+                                    lon=spots['Longitude'].tolist(),
+                                    lat=spots['Latitude'].tolist(),
+                                    area = spots['CurrentArea'].tolist(),
+                                    arearat = spots['AreaRatio'].tolist()
+                                    )
+    pix = np.array(pix)
+    '''
+    
+    '''
+    pix *= 255
+    im = Image.fromarray(pix.astype(np.uint8),mode='RGBA')
+    im.show()
+    im.save('python_map.png'.format(planet, index))
+    exit()
+    '''
+    
+    spec_quiet = get_single_spectrum(star['Teff'],star['logg'])
+    spec_gran = get_single_spectrum(star['Teff']-star['GranDeltaT'],star['logg'])
+    spec_penumbra = get_single_spectrum(star['TeffPenumbra'],star['logg'])
+    spec_umbra = get_single_spectrum(star['TeffUmbra'],star['logg'])
+
+    '''
+    # C++ implementation of the geometric spot calculation -- slightly slower than Python/NumPy
+    # Does not have limb darkening of the quiet disk implemented
+    if 'PA' in star.head(): pa = star['PA'] * np.pi/180
+    else: pa = 0.
+    mapper = wrapStarmap.PyStarmap()
+    mapper.SetupStarmap(rad=star['rstar'], res=1800)
+    mix = mapper.spot_areas(pa=pa,
+                            lon_cen=lon_center,
+                            lat_cen=lat_center,
+                            lon=spots['Longitude'].tolist(),
+                            lat=spots['Latitude'].tolist(),
+                            area = spots['CurrentArea'].tolist(),
+                            arearat = spots['AreaRatio'].tolist()
+                            )
+    '''
+    
+    '''
+    fig = plt.figure(figsize=(10,8))
+    ax = fig.add_subplot()
+    ax.plot(lam,spec_quiet*f_quiet,c='r',linewidth=1)
+    ax.plot(lam,spec_gran*f_gran,c='y',linewidth=1)
+    ax.plot(lam,spec_penumbra*f_penumbra,c='g',linewidth=1)
+    ax.plot(lam,spec_umbra*f_umbra,c='b',linewidth=1)
+    ax.plot(lam,spec_combined,c='k',linewidth=1)
+    plt.savefig('sun_spec.png')
+    '''
+
+    '''
+    # Python implementation of the pixelated spot calculation -- slow, but the only current way to create images
+    pix = star_map_ortho(star, spots, mask, lon_center=lon_center, lat_center=lat_center, planet=planet, index=index)
+    npix = pix.shape[0]*pix.shape[1]
+    f_quiet_i = np.sum(pix[:,:,0]) * 4/np.pi/npix
+    f_penumbra_i = np.sum(pix[:,:,1]) * 4/np.pi/npix
+    f_umbra_i = np.sum(pix[:,:,2]) * 4/np.pi/npix
+    '''
+    
+    # Python implementation of the geometric spot coverage calculation -- recommended
+    mix = spot_areas(star, spots, star_area, lon_center = lon_center, lat_center = lat_center, planet=planet, index=index)
+    
+    # spot_areas() computes the spots and the quiet star as a fraction of the geometric disk multiplied by the limb darkening,
+    # not a fraction of the (square) image nor the geometric disk alone
+    # the "spot coverage" is implemented as an optical depth, which must be statistically corrected for overlapping spots
+    # star_spot_ortho() returns an image with limb darkening fully implemented
+
+    if star['SpotDistribution']=='iso':
+        depth = star['SpotCoverage']
+    elif star['SpotDistribution']=='solar':
+        depth = star['SpotCoverage']/0.21019 # effective area of the integrated spot lon-lat distribution
+    else:
+        depth = star['SpotCoverage']
+    #mix[1] *= (1-np.exp(-depth))/depth
+    #mix[2] *= (1-np.exp(-0.2*depth))/(0.2*depth) # 0.2 is the average umbra/penumbra area ratio and is hard-coded
+    #print(mix)
+    f_quiet = mix[0]
+    f_penumbra = mix[1] - mix[2]
+    f_umbra = mix[2]    
+    
+    #print(npix,npix*np.pi/4,np.sum(pix[:,:,0]),np.sum(pix[:,:,0:2]))
+    #print(mix)
+    #print(mix_i)
+    '''
+    print(f_quiet_i, f_quiet, (f_quiet-f_quiet_i)/f_quiet_i)
+    print(f_penumbra_i+f_umbra_i, f_penumbra+f_umbra, (f_penumbra+f_umbra-f_penumbra_i-f_umbra_i)/(f_penumbra_i+f_umbra_i))
+    print(f_umbra_i, f_umbra, (f_umbra-f_umbra_i)/f_umbra_i)
+    f_gran_i = star['GranCoverage']*f_quiet_i
+    f_quiet_i *= (1-star['GranCoverage'])
+    #exit()
+    '''
+    f_gran = star['GranCoverage']*f_quiet
+    f_quiet *= (1-star['GranCoverage'])
+    spec_combined = spec_quiet*f_quiet + spec_gran*f_gran + spec_penumbra*f_penumbra + spec_umbra*f_umbra
+    #spec_combined_i = spec_quiet*f_quiet_i + spec_gran*f_gran_i + spec_penumbra*f_penumbra_i + spec_umbra*f_umbra_i
+    
+    '''
+    # Figure to test if the stellar spectra are working properly
+    fig = plt.figure()
+    ax = fig.add_subplot()
+    ax.plot(np.arange(0,len(spec_quiet)),spec_quiet*0.91)
+    ax.plot(np.arange(0,len(spec_quiet)),spec_combined)
+    #ax.plot(np.arange(0,len(spec_quiet)),spec_penumbra)
+    #ax.plot(np.arange(0,len(spec_quiet)),spec_umbra)
+    plt.savefig('lontest/spec_p{0:d}i{1:d}.png'.format(planet,index))
+    #exit()
+    '''
+    
+    
+    '''
+    fout = open('spec-si1.dat','w')
+    for i in range(0,len(spec_combined)):
+        fout.write('{0:.3f}\t{1:.5e}\t{2:.5e}\t{3:.5e}\n'.format(lam[i],spec_combined[i],spec_combined_i[i],spec_combined[i]-spec_combined_i[i]))
+    '''
+    '''
+    # Comparison tests for the different starspot calculations
+    spec_combined_i = spec_quiet*f_quiet_i + spec_gran*f_gran_i + spec_penumbra*f_penumbra_i + spec_umbra*f_umbra_i
+    spec_i = np.sum(spec_combined_i)
+    spec_n = np.sum(spec_combined)
+    spec_err = (spec_n-spec_i)/spec_i
+    print(spec_i,spec_n,spec_err)
+    print(star_area)
+    exit()
+    '''
+    #exit()
+    return spec_combined
+
+
+def ld_single(r, rstar, u1=0., u2=0.):
+    mu = np.sqrt(1 - r**2)
+    mu2 = max(1-mu,0)
+    mask = 1 - (u1+1) * mu2 - u2 * mu2**2
+    mask = max(mask/mu,0)
+    if np.isnan(mask): mask = np.nan_to_num(mask)
+    return mask
+
+def limb_darkening(mapsize, u1=0., u2=0.):
+    mu = np.zeros((mapsize,mapsize))
+    mask = np.zeros((mapsize,mapsize))
+    start = time.time()
+    print('Start of loop: ',time.time()-start)
+    for i in range(0,mapsize):
+        for j in range(0,mapsize):
+            mu[i,j] = np.sqrt((mapsize/2)**2 - (i-mapsize/2)**2 - (j-mapsize/2)**2) / (mapsize/2)
+    print('End of loop: ',time.time()-start)
+    mu2 = np.maximum(1-mu,0)
+    mask = 1 - (u1+1) * mu2 - u2 * mu2**2
+    mask = np.maximum(mask/mu,0)
+    mask = np.nan_to_num(mask)
+    print('End of routine: ',time.time()-start)
+    return mask
+
+
+
+def spot_areas(star, spots, star_area, lon_center=0, lat_center=0, planet=0, index=0):
+    
+    a = lat_center - np.pi/2
+    if 'PA' in star.head(): b = star['PA'] * np.pi/180
+    else: b = 0. # was np.pi/3
+    c = -lon_center
+    
+    cosa = np.cos(a)
+    sina = np.sin(a)
+    cosb = np.cos(b) # y-axis pointed into the screen
+    sinb = np.sin(b)
+    cosc = np.cos(c)
+    sinc = np.sin(c)
+
+    Rz_matrix = np.matrix([[cosc, -sinc, 0],
+                           [sinc,  cosc, 0],
+                           [   0,     0, 1]])
+    
+    Rx_matrix = np.matrix([[1,    0,     0],
+                           [0, cosa, -sina],
+                           [0, sina,  cosa]])
+        
+    Ry_matrix = np.matrix([[cosb, -sinb, 0],
+                           [sinb,  cosb, 0],
+                           [   0,     0, 1]])
+    
+    rot_matrix = np.matmul(Ry_matrix,np.matmul(Rx_matrix,Rz_matrix))
+
+    rstar = star['rstar']*R_sun
+
+    p_area = np.array(spots['CurrentArea'].values)
+    area_rat = np.array(spots['AreaRatio'].values)
+    lat = np.array(spots['Latitude'].values * np.pi/180)
+    lon = np.array(spots['Longitude'].values * np.pi/180)
+
+    u_area = p_area/area_rat
+    pr_spot = np.sqrt(p_area/np.pi)
+    ur_spot = np.sqrt(u_area/np.pi)
+    rho_pen = np.sqrt(rstar**2 - pr_spot**2)/rstar
+    rho_umb = np.sqrt(rstar**2 - ur_spot**2)/rstar
+    theta = lon + np.pi/2
+    phi = lat - np.pi/2
+
+    xp = rho_pen * np.cos(theta) * np.sin(phi)
+    yp = rho_pen * np.sin(theta) * np.sin(phi)
+    zp = rho_pen * np.cos(phi)
+    
+    xu = rho_umb * np.cos(theta) * np.sin(phi)
+    yu = rho_umb * np.sin(theta) * np.sin(phi)
+    zu = rho_umb * np.cos(phi)
+
+    s_proj = star_area
+    p_proj = 0
+    u_proj = 0
+    
+    for i in range(0,len(spots)):        
+        vec_p = np.array([xp[i],yp[i],zp[i]])
+        new_p = np.ravel(rot_matrix.dot(vec_p))
+        
+        vec_u = np.array([xu[i],yu[i],zu[i]])
+        new_u = np.ravel(rot_matrix.dot(vec_u))
+        
+        if new_p[2] < 0 or new_u[2] < 0: continue
+        
+        #new_phi_p = np.arccos(new_p[2]/rho_pen[i])              # specifies angular tilt of spot in radians
+        #new_phi_u = np.arccos(new_u[2]/rho_umb[i])
+        
+        rp = np.sqrt(new_p[0]**2 + new_p[1]**2)
+        #width_p = pr_spot[i]/rstar*np.cos(new_phi_p)
+        width_p = pr_spot[i]/rstar * new_p[2]/rho_pen[i]
+        height_p = pr_spot[i]/rstar
+        
+        ru = np.sqrt(new_u[0]**2 + new_u[1]**2)
+        #width_u = ur_spot[i]/rstar*np.cos(new_phi_u)
+        width_u = ur_spot[i]/rstar * new_u[2]/rho_umb[i]
+        height_u = ur_spot[i]/rstar
+        
+        ldp = ld_single(rp, rstar/R_sun, u1=0.0473, u2=0.0841)
+        ldu = ld_single(ru, rstar/R_sun, u1=0.0473, u2=0.0841)
+
+        s_proj -= width_p * height_p * ldp
+        p_proj += width_p * height_p * ldp
+        u_proj += width_u * height_u * ldu
+        
+    return [s_proj,p_proj,u_proj]
+
+
+def star_map_ortho(star, spots, mask, lon_center=0, lat_center=0, planet=0, index=0):
+    start = time.time()
+    mapsize = len(mask)
+    fig = plt.figure(figsize=[1,1],dpi=mapsize)
+    fig.patch.set_facecolor('black')
+    ax = fig.add_subplot()
+    ax.axis('off')
+    ax.set_facecolor('black')
+    plt.axes((-1,-1,1,1))
+    plt.subplots_adjust(top=1,bottom=0,right=1,left=0,hspace=0,wspace=0)
+
+    disk = patches.Circle((0.5,0.5),radius=0.5,color='#ff0000',linewidth=0)
+    ax.add_patch(disk)
+    
+    #print('Figure created and disk drawn: ',time.time()-start)
+    
+    a = lat_center - np.pi/2
+    if 'PA' in star.head(): b = star['PA'] * np.pi/180
+    else: b = 0. # was np.pi/3
+    c = -lon_center
+    
+    cosa = np.cos(a)
+    sina = np.sin(a)
+    cosb = np.cos(b) # y-axis pointed into the screen
+    sinb = np.sin(b)
+    cosc = np.cos(c)
+    sinc = np.sin(c)
+
+    Rz_matrix = np.matrix([[cosc, -sinc, 0],
+                           [sinc,  cosc, 0],
+                           [   0,     0, 1]])
+    
+    Rx_matrix = np.matrix([[1,    0,     0],
+                           [0, cosa, -sina],
+                           [0, sina,  cosa]])
+        
+    Ry_matrix = np.matrix([[cosb, -sinb, 0],
+                           [sinb,  cosb, 0],
+                           [   0,     0, 1]])
+    
+    rot_matrix = np.matmul(Ry_matrix,np.matmul(Rx_matrix,Rz_matrix))
+
+    rstar = star['rstar']*R_sun
+    ppatches = []
+
+    #print('Initial stuff calculated: ',time.time()-start)
+    #start = time.time()
+    
+    for i in range(0,len(spots)):
+        s = spots.iloc[i]            
+        
+        rspot = np.sqrt(s['CurrentArea']/np.pi)
+        lat = s['Latitude'] * np.pi/180
+        lon = s['Longitude'] * np.pi/180
+        '''
+        if i<12:
+            lat = np.pi*5/12
+            lon = i*np.pi/6
+        elif i==12:
+            lat = 0
+            lon = 0
+        elif i==13:
+            lat = 0
+            lon = np.pi/2
+        elif i==14:
+            lat = np.pi/2
+            lon = 0
+        else: break
+        '''
+        rho_penumbra = np.sqrt(rstar**2 - rspot**2)/rstar
+        theta = lon + np.pi/2
+        phi = lat - np.pi/2
+
+        xp = rho_penumbra*np.cos(theta)*np.sin(phi)
+        yp = rho_penumbra*np.sin(theta)*np.sin(phi)
+        zp = rho_penumbra*np.cos(phi)
+        
+        vec_p = np.array([xp,yp,zp])
+        new_p = np.ravel(rot_matrix.dot(vec_p))
+
+        #print('Python rho-th: ',rspot,rho_penumbra,theta,phi)
+        #print('Python p: ',vec_p)
+        #print('Python np: ',new_p)
+        
+        #print('{0:3.1f}\t{1:3.1f}\t{2:3.1f}'.format(new_p[0]*180./np.pi,new_p[1]*180./np.pi,new_p[2]*180./np.pi))
+        
+        if new_p[2] < 0: continue
+        
+        new_th_p = np.arctan(new_p[1]/new_p[0]) * 180/np.pi # specifies angular location of spot in degrees
+        new_phi_p = np.arccos(new_p[2]/rho_penumbra)        # specifies angular tilt of spot in radians
+        
+        #print()
+        #print(rspot)
+        #print(rstar)
+        #print(new_phi_p)
+        #print(rspot/rstar,rspot/rstar*np.cos(new_phi_p))
+        #exit()
+        #print('Penumbra math finished: ',time.time()-start)
+        
+        penumbra = patches.Ellipse((0.5+new_p[0]/2,0.5+new_p[1]/2),
+                                   width = rspot/rstar*np.cos(new_phi_p),
+                                   height = rspot/rstar,
+                                   angle = new_th_p,
+                                   color='#00ff00',
+                                   linewidth=0)
+        ax.add_patch(penumbra)
+        ppatches.append(penumbra)
+        #print('Penumbra added: ',time.time()-start)
+        #exit()
+    #ppc = PatchCollection(ppatches)
+    #ax.add_collection(ppc)
+
+    #print('Penumbras added: ',time.time()-start)
+    
+    upatches = []
+
+    for i in range(0,len(spots)):
+        s = spots.iloc[i]
+        
+        rspot = np.sqrt(s['CurrentArea']/np.pi)
+        lat = s['Latitude'] * np.pi/180
+        lon = s['Longitude'] * np.pi/180
+        a_ratio = s['AreaRatio']
+        r_umbra = rspot*np.sqrt(1/a_ratio)
+        '''
+        if i<12:
+            lat = np.pi*5/12
+            lon = i*np.pi/6
+        elif i==12:
+            lat = 0
+            lon = 0
+        elif i==13:
+            lat = 0
+            lon = np.pi/2
+        elif i==14:
+            lat = np.pi/2
+            lon = 0
+        else: break
+        '''
+        rho_umbra = np.sqrt(rstar**2 - r_umbra**2)/rstar
+        #theta = np.pi/2 - lon
+        theta = lon + np.pi/2
+        phi = lat - np.pi/2
+
+        xu = rho_umbra*np.cos(theta)*np.sin(phi)
+        yu = rho_umbra*np.sin(theta)*np.sin(phi)
+        zu = rho_umbra*np.cos(phi)
+        vec_u = np.array([xu,yu,zu])
+        new_u = np.ravel(rot_matrix.dot(vec_u))
+        
+        if new_u[2] < 0: continue
+        
+        new_th_u = np.arctan(new_u[1]/new_u[0]) * 180/np.pi
+        new_phi_u = np.arccos(new_u[2]/rho_umbra)
+        
+        umbra = patches.Ellipse((0.5+new_u[0]/2,0.5+new_u[1]/2),
+                                   width = r_umbra/rstar*np.cos(new_phi_u),
+                                   height = r_umbra/rstar,
+                                   angle = new_th_u,
+                                   color='#0000ff',
+                                   linewidth=0)
+        ax.add_patch(umbra)
+        upatches.append(umbra)
+    #upc = PatchCollection(upatches)
+    #ax.add_collection(upc)
+    
+    #print('Umbras added: ',time.time()-start)
+    
+    canvas = plt.gca().figure.canvas
+    canvas.draw()
+
+    #print('Figure drawn: ',time.time()-start)
+    
+    
+    pix = np.array(canvas.renderer.buffer_rgba()).astype(float)
+    plt.close()
+    
+    #print('Figure converted to array: ',time.time()-start)
+    
+    #mask = limb_darkening(mapsize,u1=0.0473,u2=0.0841) # solar limb darkening pending star-by-star values
+    #print('Limb darkening calculated: ',time.time()-start)
+    pix[:,:,0] *= mask
+    pix[:,:,1] *= mask
+    pix[:,:,2] *= mask
+    
+    #print('Limb darkening applied: ',time.time()-start)
+    im = Image.fromarray(pix.astype(np.uint8),mode='RGBA')
+    #im.show()
+    #im.save('startemp/p{0:d}i{1:d}.png'.format(planet, index))
+    #exit()
+    return pix/255
+
+
+def get_data_cube(star, spots, lon_center=0., lat_center=0., lmid = 0.55, bandpass=0.125, bins=10):
+
+    pix = star_map_ortho(star, spots, lon_center=lon_center, lat_center=lat_center, mapsize=180)
+    npix = pix.shape[0]*pix.shape[1]
+    
+    spec_quiet = get_single_spectrum(star['Teff'],star['logg'])
+    spec_gran = get_single_spectrum(star['Teff']-star['GranDeltaT'],star['logg'])
+    spec_penumbra = get_single_spectrum(star['TeffPenumbra'],star['logg'])
+    spec_umbra = get_single_spectrum(star['TeffUmbra'],star['logg'])
+    
+    spec_quiet = spec_quiet*(1-star['GranCoverage']) + spec_gran*star['GranCoverage']
+    
+    lmin = np.log(lmid * (1-bandpass/2))
+    lmax = np.log(lmid * (1+bandpass/2))
+    #binedges = np.exp(np.linspace(lmin,lmax,bins+1))
+    binedges = np.linspace(np.exp(lmin),np.exp(lmax),bins+1)
+    bincenter = (binedges[1:bins+1]+binedges[0:bins])/2
+
+    binned_quiet = np.zeros(bins)
+    binned_penumbra = np.zeros(bins)
+    binned_umbra = np.zeros(bins)
+    
+    for i in range(0,bins):
+        imin = np.where(lam >= binedges[i])[0][0]
+        imax = np.where(lam > binedges[i+1])[0][0]
+        print(i,imin,imax)
+        binned_quiet[i] = np.average(spec_quiet[imin:imax])
+        binned_penumbra[i] = np.average(spec_penumbra[imin:imax])
+        binned_umbra[i] = np.average(spec_umbra[imin:imax])
+        
+    cube = np.zeros((pix.shape[0],pix.shape[1],bins))
+    
+    for i in range(0,pix.shape[0]):
+        for j in range(0,pix.shape[1]):
+            cube[i,j] = binned_quiet*pix[i,j,0] + binned_penumbra*pix[i,j,1] + binned_umbra*pix[i,j,2]
+
+    fluxavg = np.zeros(bins)
+    for i in range(0,bins): fluxavg[i] = np.average(cube[:,:,i])/(1.986e-16/(bincenter[i]/1.e4))
+    print(fluxavg)
+    fluxsum = fluxavg[1:bins]+fluxavg[0:bins-1]
+    fluxdiff = fluxavg[1:bins]-fluxavg[0:bins-1]
+    wavediff = (bincenter[1:bins]-bincenter[0:bins-1])*10
+    slope = fluxdiff/fluxsum/2/wavediff*100
+    print(binedges)
+    print(slope)
+    '''
+    hdr0 = fits.Header()
+    hdr0['NPIX'] = 100
+    hdr0.comments['NPIX'] = 'Image size (pixels)'
+    hdr0['LMIN'] = 515.625
+    hdr0.comments['LMIN'] = 'Minimum wavelength (nm)'
+    hdr0['LMAX'] = 584.375
+    hdr0.comments['LMAX'] = 'Maximum wavelength (nm)'
+    hdr0['BINS'] = 10
+    hdr0.comments['BINS'] = 'Number of wavelength bins (linear)'
+    hdr0['BUNIT'] = 'phot/s/cm^2/cm'
+    hdr0.comments['BUNIT'] = 'Unit of flux'
+
+    hdul = fits.ImageHDU(cube,hdr0)
+    hdul.writeto('One_Image.fits')    
+    
+    imcube = cube[:,:,0:3]/np.max(cube[:,:,:])*255
+    im = Image.fromarray(imcube.astype(np.uint8),mode='RGB')
+    im.show()
+    exit()
+    '''
+    return cube
+    
+'''
+def star_map_rect(star, spots):
+    tmp_map_ = np.zeros((180, 360))
+    
+    for jj in range(2):
+        
+        size_ = spot_sizes_ if jj == 0 else faculae_size
+        id_ = spots_id if jj == 0 else faculae_id
+        
+        fig=plt.figure(figsize=[5.,2.5],dpi=72)#This makes a 360x180 map in Jupyter. Brute force, but it works...
+        proj = ccrs.PlateCarree()
+        ax = plt.axes(projection = proj, fc = 'w')
+    
+        canvas = FigureCanvas(fig)    
+        plt.gca().set_position([0, 0, 1, 1])
+    
+        ax.set_global()
+        ax.outline_patch.set_linewidth(0.)
+        ax.set_extent([-180, 180, -90, 90])
+
+        for ii in range(len(spot_sizes_)):
+
+            add_spots = ax.tissot(rad_km=size_[ii], lons=lon[ii], lats=lat[ii], n_samples=500, fc='r', alpha=0.1)
+        
+        canvas.draw()       # draw the canvas, cache the renderer 
+        s, (width, height) = canvas.print_to_buffer() 
+        img_ = np.fromstring(s, np.uint8).reshape((height, width, 4))
+        
+        photosphere = 1. + np.zeros((img_.shape[0],img_.shape[1]))
+        photosphere[img_[:,:,3] != 0] = photosphere_id#0.05
+        photosphere[img_[:,:,2] != 255] = id_#0.45
+
+        tmp_map_ += photosphere
+        
+        #    print(img_.shape, np.amax(img_), np.amin(img_))
+        
+        plt.close()
+
+    photosphere = photosphere_id + np.zeros((180,360))
+    photosphere[tmp_map_ == spots_id + faculae_id] = spots_id
+    photosphere[tmp_map_ == photosphere_id + faculae_id] = faculae_id
+    photosphere[tmp_map_ == photosphere_id + photosphere_id] = photosphere_id
+
+    return photosphere
+'''

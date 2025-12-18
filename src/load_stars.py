@@ -39,7 +39,7 @@ def load_target_list(target_list_file):
                 headerindex.append(i)
                 break
             else: continue
-
+            
     if 'Lstar' not in finalheader:
         print('Error: \"Lstar\" missing from input file.')
         exit()
@@ -57,8 +57,8 @@ def load_target_list(target_list_file):
         exit()
     if 'Rmag' not in finalheader and 'Rmag' not in finalheader and 'Rmag' not in finalheader and 'Rmag' not in finalheader and 'Rmag' not in finalheader:
         print('Error: need an R, I, J, H, or K magnitude in input file.')
-        exit()        
-            
+        exit()
+        
     for i in range(0,dlen):
         grid.append([])
         line = lines[i+start].replace('|',',').split(',')
@@ -93,6 +93,24 @@ def load_target_list(target_list_file):
     
     target_list['BmV'] = BmV
     target_list['angdiam'] = angdiam
+
+    # Add stellar activity model parameters
+    # PENDING BEING ABLE TO SET UP DISTRIBUTIONS
+    target_list['SpotCoverage'] = 0.2
+    target_list['SpotWarmupTime'] = 0.
+    target_list['FacWarmupTime'] = 0.
+    target_list['InitialArea'] = 10.*MSH
+    target_list['MeanSpotArea'] = 500.*MSH  # NOT a VSPEC default
+    target_list['LogSigmaArea'] = 0.2       # NOT a VSPEC default
+    target_list['SpotDistribution'] = 'iso'
+    target_list['GrowthRate'] = 0.52
+    target_list['DecayRate'] = 10.89*MSH
+    target_list['TeffPenumbra'] = 2700
+    target_list['TeffUmbra'] = 2500
+    target_list['GranCoverage'] = 0.2
+    target_list['GranAmplitude'] = 0.01
+    target_list['GranPeriod'] = 3.0 # hours, based on SOHO data
+    target_list['GranDeltaT'] = 200 # kelvin
 
     return target_list
 
@@ -174,9 +192,6 @@ def load_stars(target_list_file):
  
     # Dust map can't handle logg > 5.25
     target_list = target_list[target_list['logg'] <= 5.24]
-
-    # Stellar model can't handle Teff < 3500
-    target_list = target_list[target_list['Teff'] >= 3500]
 
     # Fix indices of target list.
     target_list.index = range(len(target_list.index))

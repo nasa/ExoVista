@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp2d
+from scipy.stats import norm
 from src.constants import pllabel, maxnplanets
 from src import Settings
+import matplotlib.pyplot as plt
 
 settings = Settings.Settings()
 
@@ -52,17 +54,21 @@ def mass_to_radius(M, rng, a=None, randrad=False):
 def radius_to_mass(R):
     # Calculates mass in Earth masses based on Chen & Kipping (2017)
     # WARNING: does not return valid results for Saturns and up.
+    # Not monotonic for R>12.22 R_E
+    # Returns the value on the lower-mass branch.
     M = np.zeros(len(R))
     
     i = [j for j in range(0,len(R)) if R[j]<=1.008 * 2.04**0.279]
     M[i] = (R[i]/1.008)**(1./0.279)
     i = [j for j in range(0,len(R)) if R[j]>1.008 * 2.04**0.279]
     M[i] = (R[i]/(1.008 * 2.04**0.279))**(1./0.589) * 2.04
-    i = [j for j in range(0,len(R)) if R[j]>12.22] # R(M) is not monotonic in this range.
-    M[i] = -1.
+    #i = [j for j in range(0,len(R)) if R[j]>12.22] # R(M) is not monotonic in this range.
+    #M[i] = -1.
+    i = [j for j in range(0,len(R)) if R[j]>1.008 * 2.04**0.279 * 131.6**0.589]
+    M[i] = (R[i]/(1.008 * 2.04**0.279 * (131.6/2.04)**0.589))**(1./-0.044) * 131.6
 
     return M
-    
+
 
 def generate_planets(stars, settings, bound='', nomcdraw=False, addearth=False, usebins=False, subdivide=1):
     print('Generating planets...')
@@ -87,10 +93,12 @@ def generate_planets(stars, settings, bound='', nomcdraw=False, addearth=False, 
     # Check that "stars" has the necessary tags
     if 'Lstar' not in stars.head():
         print('Error: stars input must be a DataFrame including column \"Lstar\"')
+        exit()
         return
 
     if usebins and settings.randrad:
         print('Error: usebins keyword is not compatible with the randomized mass-radius relation (randrad)')
+        exit()
         return
     
     # Define planet structure entry, as described below
@@ -136,7 +144,7 @@ def generate_planets(stars, settings, bound='', nomcdraw=False, addearth=False, 
     '''
     
     # load occurrence rates in mass - semimajor axis space
-    occrates, medge, aedge, mbins, abins = load_occurrence_rates(bound=bound, mass=True, usebins=usebins)
+    occrates, medge, redge, aedge, mbins, rbins, abins = load_occurrence_rates(bound=bound, mass=True, usebins=usebins)
     
     expected = np.zeros((len(abins),len(mbins)))
     randgrid = np.zeros((len(abins),len(mbins),nstars))
@@ -282,54 +290,120 @@ def load_occurrence_rates(subdivide=1, bound='', mass=True, usebins=False):
 
     tag = ''
     if mass: tag = 'Mass'
+    tag = 'Radius'
     subdivide = min(max(1,subdivide),10) # Keep the occurrence rate grid a reasonable size.
     
     filename = 'occurrence_rates/NominalOcc_' + tag + '.csv'
     if bound=='lower': filename = 'occurrence_rates/PessimisticOcc_' + tag + '.csv'
-    if bound=='upper':  filename = 'occurrence_rates/OptimisticOcc_' + tag + '.csv'
+    if bound=='upper': filename = 'occurrence_rates/OptimisticOcc_'  + tag + '.csv'
     
-    return load_occurrence_ratesMA(filename, subdivide=subdivide, usebins=usebins)
+    return load_occurrence_rates_convolved('occurrence_rates/NominalOcc_', subdivide=subdivide, usebins=usebins)
 
 
-def load_occurrence_ratesMA(filename, subdivide=1, usebins=False):    
+def load_occurrence_rates_convolved(filepath, subdivide=1, usebins=False):
+    # Note: I'm not sure if the routine is actually capable of subdividing in its current state.
     
-    data = pd.read_csv(filename)
-    data.columns = data.columns.str.replace(' ','')
+    # split between RV and transit rates in Dulz et al. (2020)
+    rsplit = 10.0
+    msplit = (rsplit/(1.008*2.04**0.279))**(1/0.589)*2.04
+
+    # Read in tables from files
+    massfile = filepath + 'Mass.csv'
+    radfile = filepath + 'Radius.csv'
     
-    tempoccrate = data['Occ'].values
-    tlen = len(tempoccrate)
+    dataM = pd.read_csv(massfile)
+    dataM.columns = dataM.columns.str.replace(' ','')
     
-    mmin = data['M_min'].values
-    m    = data['M_mid'].values
-    mmax = data['M_max'].values
+    dataR = pd.read_csv(radfile)
+    dataR.columns = dataR.columns.str.replace(' ','')
     
-    amin = data['a_min'].values
-    a    = data['a_mid'].values
-    amax = data['a_max'].values
+    tempoccrateM = dataM['Occ'].values
+    tlenM = len(tempoccrateM)
     
-    # Create x and y-axis vectors    
+    mmin = dataM['M_min'].values
+    m    = dataM['M_mid'].values
+    mmax = dataM['M_max'].values
+    
+    amin = dataM['a_min'].values
+    a    = dataM['a_mid'].values
+    amax = dataM['a_max'].values
+    
+    tempoccrateR = dataR['Occ'].values
+    tlenR = len(tempoccrateR)
+    
+    rmin = dataR['R_min'].values
+    r    = dataR['R_mid'].values
+    rmax = dataR['R_max'].values    
+    
+    # Create x and y-axis vectors
     mminvec = np.sort(np.unique(mmin))
     mvec    = np.sort(np.unique(m))
     mmaxvec = np.sort(np.unique(mmax))
     
+    rminvec = np.sort(np.unique(rmin))
+    rvec    = np.sort(np.unique(r))
+    rmaxvec = np.sort(np.unique(rmax))
+    
     aminvec = np.sort(np.unique(amin))
     avec    = np.sort(np.unique(a))
     amaxvec = np.sort(np.unique(amax))
+
+    # Check that the tables are logarithmically spaced
+    # And compute logarithmic pixel size: d^2 occrate / dlna dlnr (or dlnm)
+    lnm = np.log(mvec)
+    difflnm = lnm[1:len(lnm)] - lnm[0:len(lnm)-1]
+    if np.abs(np.max(difflnm)-np.min(difflnm)) / np.abs(np.min(difflnm)) > 0.01:
+        print('Mass spacing for occurrence rates must be constant in ln space')
+        exit()
+    dlnm = difflnm[0]
     
-    # Define separate pixel edges and centers with the planet type bins included.
-    # Centers are needed for interpolation since they'll be at higher than the table resolution.
+    lnr = np.log(rvec)
+    difflnr = lnr[1:len(lnr)] - lnr[0:len(lnr)-1]
+    if np.abs(np.max(difflnr)-np.min(difflnr)) / np.abs(np.min(difflnr)) > 0.01:
+        print('Radius spacing for occurrence rates must be constant in ln space')
+        exit()
+    dlnr = difflnr[0]
+    
+    lna = np.log(avec)
+    difflna = lna[1:len(lna)] - lna[0:len(lna)-1]
+    if np.abs(np.max(difflna)-np.min(difflna)) / np.abs(np.min(difflna)) > 0.01:
+        print('SMA spacing for occurrence rates must be constant in ln space')
+        exit()
+    dlna = difflna[0]
+    
+    # Assemble the combined m-space plus r-space output grid with appropriate bin edges
+    # Note: default input is 100x100, default output is 100x129
+    # Because the m-space and r-space grids don't line up after conversions between the two
+    
     npix = len(avec)*subdivide
     mbins = np.exp(np.linspace(np.log(mvec[0]),np.log(mvec[-1]),npix))
+    rbins = np.exp(np.linspace(np.log(rvec[0]),np.log(rvec[-1]),npix))
     abins = np.exp(np.linspace(np.log(avec[0]),np.log(avec[-1]),npix))
     
-    medge = np.zeros(len(mbins)+1)
-    medge[0] = mbins[0] * np.sqrt(mbins[0]/mbins[1])
-    medge[-1] = mbins[-1] * np.sqrt(mbins[-1]/mbins[-2])
-    medge[1:-1] = np.sqrt(mbins[:-1]*mbins[1:])
-    if usebins: medge = np.append(medge,radius_to_mass(rbound[1:-1]))
-    medge.sort()
-    mmid = np.sqrt(medge[0:-1]*medge[1:])
-    msize = medge[1:]/medge[0:-1]
+    medge_temp = np.zeros(len(mbins)+1)
+    medge_temp[0] = mbins[0] * np.sqrt(mbins[0]/mbins[1])
+    medge_temp[-1] = mbins[-1] * np.sqrt(mbins[-1]/mbins[-2])
+    medge_temp[1:-1] = np.sqrt(mbins[:-1]*mbins[1:])
+    medge_temp = np.append(medge_temp,msplit)
+    if usebins: medge_temp = np.append(medge_temp,radius_to_mass(rbound[1:-1]))
+    medge_temp.sort()
+    mmid_temp = np.sqrt(medge_temp[0:-1]*medge_temp[1:])
+
+    temp_rng = np.random.default_rng() # Dummy variable not used in this function call
+    rmid_alt = mass_to_radius(mmid_temp,temp_rng)
+    redge_alt = mass_to_radius(medge_temp,temp_rng)
+    
+    redge_temp = np.zeros(len(rbins)+1)
+    redge_temp[0] = rbins[0] * np.sqrt(rbins[0]/rbins[1])
+    redge_temp[-1] = rbins[-1] * np.sqrt(rbins[-1]/rbins[-2])
+    redge_temp[1:-1] = np.sqrt(rbins[:-1]*rbins[1:])
+    redge_temp = np.append(redge_temp,rsplit)
+    if usebins: redge_temp = np.append(redge_temp,rbound[1:-1])
+    redge_temp.sort()
+    rmid_temp = np.sqrt(redge_temp[0:-1]*redge_temp[1:])
+
+    mmid_alt = radius_to_mass(rmid_temp)
+    medge_alt = radius_to_mass(redge_temp)
     
     aedge = np.zeros(len(abins)+1)
     aedge[0] = abins[0] * np.sqrt(abins[0]/abins[1])
@@ -340,55 +414,313 @@ def load_occurrence_ratesMA(filename, subdivide=1, usebins=False):
     amid = np.sqrt(aedge[0:-1]*aedge[1:])
     asize = aedge[1:]/aedge[0:-1]
     
-    # Turn the occ rate list into a 2D array
-    # using the x and y-axis vectors
-    # (Allows for the 2D array not precisely matching the tables in shape.)
-    occrate = np.zeros((len(avec),len(mvec)))
-    for i in range(0,tlen):
+    risplit = np.where(rmid_temp>=rsplit)[0][0]
+    misplit = np.where(mmid_temp>=msplit)[0][0]
+    
+    mmid  = np.concatenate((mmid_alt[0:risplit],  mmid_temp[misplit:]))
+    medge = np.concatenate((medge_alt[0:risplit], medge_temp[misplit:]))
+    rmid  = np.concatenate((rmid_temp[0:risplit], rmid_alt[misplit:]))
+    redge = np.concatenate((redge_temp[0:risplit],redge_alt[misplit:]))
+    
+    rsize = redge[1:]/redge[0:-1]
+    msize = medge[1:]/medge[0:-1]
+    
+    # Turn the input occurrence rates into a 2D array of the correct shape
+    # Padded with a border for convolution with the dispersion relation
+    occrateRpad = np.zeros((len(avec),len(rvec)+20))
+    occrateMpad = np.zeros((len(avec),len(mvec)+20))
+    for i in range(0,tlenM):
         ia = np.where(avec==a[i])[0][0]
         im = np.where(mvec==m[i])[0][0]
-        occrate[ia,im] = tempoccrate[i]
+        ir = np.where(rvec==r[i])[0][0]
+        occrateRpad[ia,ir+10] = tempoccrateR[i]
+        occrateMpad[ia,im+10] = tempoccrateM[i]
+        
+    rvecPad = np.zeros(len(rvec)+20)
+    rvecPad[10:-10] = rvec
+    rminvecPad = np.zeros(len(rminvec)+20)
+    rminvecPad[10:-10] = rminvec
+    rmaxvecPad = np.zeros(len(rmaxvec)+20)
+    rmaxvecPad[10:-10] = rmaxvec
     
-    # Convert occurrence rates to d^2 occrate / dlnp dlnr.
-    # Also checks that the tables are uniform in phase space.
-    lnm = np.log(mvec)
-    difflnm = lnm[1:len(lnm)] - lnm[0:len(lnm)-1]
-    if np.abs(np.max(difflnm)-np.min(difflnm)) / np.abs(np.min(difflnm)) > 0.01:
-        print('Mass spacing must be constant in ln space')    
-    dlnm = difflnm[0]
+    mvecPad = np.zeros(len(mvec)+20)
+    mvecPad[10:-10] = mvec
+    mminvecPad = np.zeros(len(mminvec)+20)
+    mminvecPad[10:-10] = mminvec
+    mmaxvecPad = np.zeros(len(mmaxvec)+20)
+    mmaxvecPad[10:-10] = mmaxvec
     
-    lna = np.log(avec)
-    difflna = lna[1:len(lna)] - lna[0:len(lna)-1]
-    if np.abs(np.max(difflna)-np.min(difflna)) / np.abs(np.min(difflna)) > 0.01:
-        print('SMA spacing must be constant in ln space')
-        return
-    dlna = difflna[0]
+    for i in range(0,10):
+        occrateRpad[:,i] = occrateRpad[:,10]
+        occrateRpad[:,-i-1] = occrateRpad[:,-11]
+        occrateMpad[:,i] = occrateMpad[:,10]
+        occrateMpad[:,-i-1] = occrateMpad[:,-11]
+        
+        rvecPad[9-i] = rvecPad[10-i] / np.exp(dlnr)
+        rvecPad[-10+i] = rvecPad[-11+i] * np.exp(dlnr)
+        rminvecPad[9-i] = rminvecPad[10-i] / np.exp(dlnr)
+        rminvecPad[-10+i] = rminvecPad[-11+i] * np.exp(dlnr)
+        rmaxvecPad[9-i] = rmaxvecPad[10-i] / np.exp(dlnr)
+        rmaxvecPad[-10+i] = rmaxvecPad[-11+i] * np.exp(dlnr)
+        
+        mvecPad[9-i] = mvecPad[10-i] / np.exp(dlnm)
+        mvecPad[-10+i] = mvecPad[-11+i] * np.exp(dlnm)
+        mminvecPad[9-i] = mminvecPad[10-i] / np.exp(dlnm)
+        mminvecPad[-10+i] = mminvecPad[-11+i] * np.exp(dlnm)
+        mmaxvecPad[9-i] = mmaxvecPad[10-i] / np.exp(dlnm)
+        mmaxvecPad[-10+i] = mmaxvecPad[-11+i] * np.exp(dlnm)
+
+    # Copy the "directly"-measured regions of the tables into new grids
+    CVoccrateR = np.zeros((len(avec),len(rvec)))
+    CVoccrateM = np.zeros((len(avec),len(mvec)))
     
-    occrate /= (dlnm * dlna)
+    newR = mass_to_radius(mvec,temp_rng)
+    newM = radius_to_mass(rvec)
     
-    # Interpolate to the output grid.
+    newRpad = np.log(mass_to_radius(mvecPad,temp_rng))
+    newMpad = np.log(radius_to_mass(rvecPad))
+    
+    newRmin = np.log(mass_to_radius(mminvec,temp_rng))
+    newMmin = np.log(radius_to_mass(rminvec))
+    
+    newRmax = np.log(mass_to_radius(mmaxvec,temp_rng))
+    newMmax = np.log(radius_to_mass(rmaxvec))
+    
+    convMgrid = np.zeros((len(mvec)+20,len(mvec)+20))
+    convRgrid = np.zeros((len(rvec)+20,len(rvec)+20))
+    
+    for i in range(0,len(rvec)):
+        if rvec[i] < rsplit: CVoccrateR[:,i] = occrateRpad[:,i+10]
+        if mvec[i] > msplit: CVoccrateM[:,i] = occrateMpad[:,i+10]
+
+    # Fill in the computed regions of the tables by convolving the opposite grid with the dispersion relation
+    for i in range(0,len(mvecPad)):
+        if mvecPad[i]<=np.log(2.04): sigmaR = np.log(1.0403)
+        elif mvecPad[i]<=np.log(131.6): sigmaR = np.log(1.1460)
+        else: sigmaR = np.log(1.0737)
+
+        if np.exp(newRpad[i]) < rsplit: continue
+
+        for j in range(0,len(rvecPad)):
+            convRgrid[i,j] = abs(norm.cdf(np.log(rmaxvecPad[j]),newRpad[i],sigmaR)-norm.cdf(np.log(rminvecPad[j]),newRpad[i],sigmaR))
+            if 10<=j<len(rvec)+10: CVoccrateR[:,j-10] += occrateMpad[:,i]*convRgrid[i,j]
+        
+    for i in range(0,len(rvecPad)):
+        if newMpad[i]<=np.log(2.04): sigmaM = np.log(1.0403)/0.279
+        elif newMpad[i]<=np.log(131.6): sigmaM = np.log(1.1460)/0.589
+        else: sigmaM = np.log(1.0737)/0.044
+        
+        if np.exp(newMpad[i]) > msplit: continue
+        
+        for j in range(0,len(mvecPad)):            
+            convMgrid[i,j] = abs(norm.cdf(np.log(mmaxvecPad[j]),newMpad[i],sigmaM)-norm.cdf(np.log(mminvecPad[j]),newMpad[i],sigmaM))
+            if 10<=j<len(mvec)+10: CVoccrateM[:,j-10] += occrateRpad[:,i]*convMgrid[i,j]
+    
+    # Scale by logarithmic pixel size
+    CVoccrateR /= (dlnr * dlna)
+    CVoccrateM /= (dlnm * dlna)
+    
+    # Interpolate to the output grid
     mvec = np.log(mvec)
+    rvec = np.log(rvec)
     avec = np.log(avec)
     
-    occ_interp = interp2d(mvec, avec, occrate, kind='cubic')
-    newoccrate = occ_interp(np.log(mmid),np.log(amid))
-    newoccrate = newoccrate * (newoccrate > 0) # Occurence rate cannot be negative
-    
-    # Multiply table-resolution occurrence rates by pixel size.
-    dlnm_in = (np.log(np.max(mmaxvec)) - np.log(np.min(mminvec))) / len(mvec)
-    dlnm_out = np.log(msize) / dlnm_in
-    
-    dlna_in = (np.log(np.max(amaxvec)) - np.log(np.min(aminvec))) / len(avec)
-    dlna_out = np.log(asize) / dlna_in
+    occ_interpR = interp2d(rvec, avec, CVoccrateR, kind='cubic')
+    occ_interpM = interp2d(mvec, avec, CVoccrateM, kind='cubic')
 
-    newoccrate *= np.outer(np.log(asize), np.log(msize))
+    # Combine the scaled grids into the final combined grid
+    finalsplit = np.where(rmid>=rsplit)[0][0]
+    newoccrate = np.zeros((len(amid),len(mmid)))
+    newoccrate[:,0:finalsplit] = occ_interpR(np.log(rmid[0:finalsplit]),np.log(amid))
+    newoccrate[:,finalsplit:] = occ_interpM(np.log(mmid[finalsplit:]),np.log(amid))
+    newoccrate = newoccrate * (newoccrate > 0) # Occurence rate cannot be negative
+
+    #Rescale to the final pixel size
+    newoccrate[:,0:finalsplit] *= np.outer(np.log(asize), np.log(rsize))[:,0:finalsplit]
+    newoccrate[:,finalsplit:] *= np.outer(np.log(asize), np.log(msize))[:,finalsplit:]
     
     if np.max(newoccrate) > 1:
         print('Error: max occurrence rate > 1. Try increasing the grid size.')
         exit()
         # Easier to see the error message without a return.
         
-    return newoccrate, medge, aedge, mmid, amid
+    return newoccrate, medge, redge, aedge, mmid, rmid, amid
+
+
+def load_occurrence_rates_combined(filepath, subdivide=1, usebins=False):
+    
+    # split between RV and transit rates in Dulz et al. (2020)
+    
+    rsplit = 10.0
+    msplit = (rsplit/(1.008*2.04**0.279))**(1/0.589)*2.04
+
+    # Read in tables from files
+    
+    massfile = filepath + 'Mass.csv'
+    radfile = filepath + 'Radius.csv'
+    
+    dataM = pd.read_csv(massfile)
+    dataM.columns = dataM.columns.str.replace(' ','')
+    
+    dataR = pd.read_csv(radfile)
+    dataR.columns = dataR.columns.str.replace(' ','')
+    
+    tempoccrateM = dataM['Occ'].values
+    tlenM = len(tempoccrateM)
+    
+    mmin = dataM['M_min'].values
+    m    = dataM['M_mid'].values
+    mmax = dataM['M_max'].values
+    
+    amin = dataM['a_min'].values
+    a    = dataM['a_mid'].values
+    amax = dataM['a_max'].values
+    
+    tempoccrateR = dataR['Occ'].values
+    tlenR = len(tempoccrateR)
+    
+    rmin = dataR['R_min'].values
+    r    = dataR['R_mid'].values
+    rmax = dataR['R_max'].values    
+    
+    # Create x and y-axis vectors
+    mminvec = np.sort(np.unique(mmin))
+    mvec    = np.sort(np.unique(m))
+    mmaxvec = np.sort(np.unique(mmax))
+    
+    rminvec = np.sort(np.unique(rmin))
+    rvec    = np.sort(np.unique(r))
+    rmaxvec = np.sort(np.unique(rmax))
+    
+    aminvec = np.sort(np.unique(amin))
+    avec    = np.sort(np.unique(a))
+    amaxvec = np.sort(np.unique(amax))
+
+    # Check that the tables are logarithmically spaced
+    # And compute logarithmic pixel size: d^2 occrate / dlna dlnr (or dlnm)
+    lnm = np.log(mvec)
+    difflnm = lnm[1:len(lnm)] - lnm[0:len(lnm)-1]
+    if np.abs(np.max(difflnm)-np.min(difflnm)) / np.abs(np.min(difflnm)) > 0.01:
+        print('Mass spacing for occurrence rates must be constant in ln space')
+        exit()
+    dlnm = difflnm[0]
+    
+    lnr = np.log(rvec)
+    difflnr = lnr[1:len(lnr)] - lnr[0:len(lnr)-1]
+    if np.abs(np.max(difflnr)-np.min(difflnr)) / np.abs(np.min(difflnr)) > 0.01:
+        print('Radius spacing for occurrence rates must be constant in ln space')
+        exit()
+    dlnr = difflnr[0]
+    
+    lna = np.log(avec)
+    difflna = lna[1:len(lna)] - lna[0:len(lna)-1]
+    if np.abs(np.max(difflna)-np.min(difflna)) / np.abs(np.min(difflna)) > 0.01:
+        print('SMA spacing for occurrence rates must be constant in ln space')
+        exit()
+    dlna = difflna[0]
+
+    # Assemble the combined m-space plus r-space output grid with appropriate bin edges
+    # Note: default input is 100x100, default output is 100x129
+    # Because the m-space and r-space grids don't line up after conversions between the two
+    
+    npix = len(avec)*subdivide
+    mbins = np.exp(np.linspace(np.log(mvec[0]),np.log(mvec[-1]),npix))
+    rbins = np.exp(np.linspace(np.log(rvec[0]),np.log(rvec[-1]),npix))
+    abins = np.exp(np.linspace(np.log(avec[0]),np.log(avec[-1]),npix))
+    
+    medge_temp = np.zeros(len(mbins)+1)
+    medge_temp[0] = mbins[0] * np.sqrt(mbins[0]/mbins[1])
+    medge_temp[-1] = mbins[-1] * np.sqrt(mbins[-1]/mbins[-2])
+    medge_temp[1:-1] = np.sqrt(mbins[:-1]*mbins[1:])
+    medge_temp = np.append(medge_temp,msplit)
+    if usebins: medge_temp = np.append(medge_temp,radius_to_mass(rbound[1:-1]))
+    medge_temp.sort()
+    mmid_temp = np.sqrt(medge_temp[0:-1]*medge_temp[1:])
+
+    temp_rng = np.random.default_rng()
+    rmid_alt = mass_to_radius(mmid_temp,temp_rng)
+    redge_alt = mass_to_radius(medge_temp,temp_rng)
+    
+    redge_temp = np.zeros(len(rbins)+1)
+    redge_temp[0] = rbins[0] * np.sqrt(rbins[0]/rbins[1])
+    redge_temp[-1] = rbins[-1] * np.sqrt(rbins[-1]/rbins[-2])
+    redge_temp[1:-1] = np.sqrt(rbins[:-1]*rbins[1:])
+    redge_temp = np.append(redge_temp,rsplit)
+    if usebins: redge_temp = np.append(redge_temp,rbound[1:-1])
+    redge_temp.sort()
+    rmid_temp = np.sqrt(redge_temp[0:-1]*redge_temp[1:])
+
+    mmid_alt = radius_to_mass(rmid_temp)
+    medge_alt = radius_to_mass(redge_temp)
+    
+    aedge = np.zeros(len(abins)+1)
+    aedge[0] = abins[0] * np.sqrt(abins[0]/abins[1])
+    aedge[-1] = abins[-1] * np.sqrt(abins[-1]/abins[-2])
+    aedge[1:-1] = np.sqrt(abins[:-1]*abins[1:])
+    if usebins: aedge = np.append(aedge,np.unique(abound[:,1:-1].flatten()))
+    aedge.sort()
+    amid = np.sqrt(aedge[0:-1]*aedge[1:])
+    asize = aedge[1:]/aedge[0:-1]
+    
+    risplit = np.where(rmid_temp>=rsplit)[0][0]
+    misplit = np.where(mmid_temp>=msplit)[0][0]
+    
+    mmid  = np.concatenate((mmid_alt[0:risplit],  mmid_temp[misplit:]))
+    medge = np.concatenate((medge_alt[0:risplit], medge_temp[misplit:]))
+    rmid  = np.concatenate((rmid_temp[0:risplit], rmid_alt[misplit:]))
+    redge = np.concatenate((redge_temp[0:risplit],redge_alt[misplit:]))
+    
+    rsize = redge[1:]/redge[0:-1]
+    msize = medge[1:]/medge[0:-1]
+    
+    # Turn the input occurrence rates into a 2D array
+    occrateR = np.zeros((len(avec),len(rvec)))
+    occrateM = np.zeros((len(avec),len(mvec)))
+    for i in range(0,tlenM):
+        ia = np.where(avec==a[i])[0][0]
+        im = np.where(mvec==m[i])[0][0]
+        ir = np.where(rvec==r[i])[0][0]
+        occrateR[ia,ir] = tempoccrateR[i]
+        occrateM[ia,im] = tempoccrateM[i]
+
+    # Scale by logarithmic pixel size
+    rjsplit = np.where(rvec>=rsplit)[0][0]
+    occrateR /= (dlnr * dlna)
+    occrateM /= (dlnm * dlna)
+    
+    # Interpolate to the output grid
+    mvec = np.log(mvec)
+    rvec = np.log(rvec)
+    avec = np.log(avec)
+    
+    occ_interpR = interp2d(rvec, avec, occrateR, kind='cubic')
+    occ_interpM = interp2d(mvec, avec, occrateM, kind='cubic')
+    
+    risplit = np.where(rmid>=rsplit)[0][0]
+    newoccrate = np.zeros((len(amid),len(mmid)))
+    newoccrate[:,0:risplit] = occ_interpR(np.log(rmid[0:risplit]),np.log(amid))
+    newoccrate[:,risplit:] = occ_interpM(np.log(mmid[risplit:]),np.log(amid))
+    newoccrate = newoccrate * (newoccrate > 0) # Occurence rate cannot be negative
+    
+    # Multiply table-resolution occurrence rates by pixel size. AM I ACTUALLY USING THESE?!
+    dlnm_in = (np.log(np.max(mmaxvec)) - np.log(np.min(mminvec))) / len(mvec)
+    dlnm_out = np.log(msize) / dlnm_in
+    
+    dlnr_in = (np.log(np.max(rmaxvec)) - np.log(np.min(rminvec))) / len(rvec)
+    dlnr_out = np.log(rsize) / dlnr_in
+    
+    dlna_in = (np.log(np.max(amaxvec)) - np.log(np.min(aminvec))) / len(avec)
+    dlna_out = np.log(asize) / dlna_in
+
+    newoccrate[:,0:risplit] *= np.outer(np.log(asize), np.log(rsize))[:,0:risplit]
+    newoccrate[:,risplit:] *= np.outer(np.log(asize), np.log(msize))[:,risplit:]
+    
+    if np.max(newoccrate) > 1:
+        print('Error: max occurrence rate > 1. Try increasing the grid size.')
+        exit()
+        # Easier to see the error message without a return.
+        
+    return newoccrate, medge, redge, aedge, mmid, rmid, amid
 
 
 def add_planets(stars, plorb, expected, orM_array, ora_array, hillsphere_flag, randrad, rng):
@@ -409,7 +741,7 @@ def add_planets(stars, plorb, expected, orM_array, ora_array, hillsphere_flag, r
 
     realbinsx = np.log(ora_array)
     realbinsy = np.log(orM_array)
-    
+
     j = np.where(temp_M > 0)[0]
     h, xedges, yedges = np.histogram2d(np.log(temp_a[j]),np.log(temp_M[j]),[realbinsx,realbinsy])
     
@@ -591,5 +923,4 @@ def assign_albedo_file(stars, plorb, rng):
             findex = int(find[0])
         
             plalbedo[i].append(flist[findex])
-            
     return plalbedo

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from pathlib import Path
 
 @dataclass
 class Settings():
@@ -35,7 +36,7 @@ class Settings():
     maxsize:       float = 1000.   # maximum disk particle size
     rdust_blowout: float = 0.5     # this could be updated for each star, but that's kinda BS anyway
     tsublimate :   float = 1500.
-  
+    
     # disk profile parameters
     density_ratio: float = 5.      # all components have the same density w/in this factor
     stability_factor: float = 3.
@@ -52,6 +53,13 @@ class Settings():
     dt:           float = 10./365.25
     output_dir:     str = 'output'
     overwrite:     bool = False    # set to True to automatically overwrite existing FITS files
+    starspots:     bool = True
+
+    # stellar model parameters
+    nlat_star = 500
+    nlon_star = 1000
+    
+    PRESET_PATH = Path(__file__).parent / 'presets'
     
     def __post_init__(self):
         self.pixscale_mas = self.pixscale * 1000.

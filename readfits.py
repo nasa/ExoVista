@@ -116,9 +116,12 @@ if 'VERSION' in hdul[0].header:
 if version <= 2.1:
     specstart = 15
     hstar = 3
-else:
+elif version <= 2.4:
     specstart = 16
     hstar = 4
+else:
+    specstart = 16
+    hstar = 5
     
 speclen = len(hdul[0].data)
 
@@ -133,7 +136,8 @@ stardata = np.zeros((ntimes,npoints))
 planetdata = np.zeros((nplanets,ntimes,npoints))
 
 stardata = hdul[hstar].data
-for i in range(1,nplanets): planetdata[i-1] = hdul[i+hstar].data # note here and later that counting starts from 1 because it's counted from hstar
+for i in range(1,nplanets):
+    planetdata[i-1] = hdul[i+hstar].data # note here and later that counting starts from 1 because it's counted from hstar
 
 # Plot 1: Image of disk and planets marked by brightness relative to full phase
 

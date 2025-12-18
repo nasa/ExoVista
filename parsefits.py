@@ -73,9 +73,12 @@ if 'VERSION' in hdul[0].header:
 if version <= 2.1:
     specstart = 15
     hstar = 3
-else:
+elif version <= 2.4:
     specstart = 16
     hstar = 4
+else:
+    specstart = 16
+    hstar = 5
     
 speclen = len(hdul[0].data)
 

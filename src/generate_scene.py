@@ -12,6 +12,7 @@ from src import nbody
 from src import wrapImage
 from src.constants import *
 from src import Settings
+from src import make_starmap
 
 settings = Settings.Settings()
 
@@ -108,13 +109,13 @@ def load_lqabs(lqq_dir, composition, rdust, rdust_boundaries, lam):
 def lambertian(beta):
     # Returns the value of the Lambert phase function
     # beta = phase angle in radians
-    # See, e.g., R. Brown (2005) "Sing-Visit Photometric
+    # See, e.g., R. Brown (2005) "Single-Visit Photometric
     # and Obscurational Completeness" Eq 4
     
     phi = (np.sin(beta) + (np.pi-beta) * np.cos(beta)) / np.pi
     return phi
 
-def generate_scene(stars, planets, disks, albedos, compositions, settings):
+def generate_scene(stars, spots, planets, disks, albedos, compositions, settings):
     '''
     Some important conventions on coordinates:
     i = +/- 90 is an edge-on orientation
@@ -124,6 +125,11 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
     '''
     settings = settings
     rng = np.random.default_rng(settings.seed)
+
+    s = stars.iloc[0]
+    sp = spots.iloc[0]['Spots']
+
+    images = []
     
     pixscale_arcsec = settings.pixscale
     if settings.output_dir[-1] != '/': settings.output_dir = settings.output_dir + '/'
@@ -139,9 +145,12 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
     dlnlambda = 1./settings.specres
     lnlambdamax = np.log(settings.lambdamax)
     lnlambdamin = np.log(settings.lambdamin)
-    nlambda = int(np.ceil((lnlambdamax-lnlambdamin)/dlnlambda))
-    lam = np.linspace(lnlambdamin,lnlambdamax,nlambda)
+
+    lamstep = np.log(1+1/settings.specres)
+    lam = np.arange(lnlambdamin,lnlambdamax,lamstep)
     lam = np.exp(lam)
+    nlambda = len(lam)
+    
     transition_lambda0 = (lam[0]/lam[1])*lam[0]
     transition_lambda2 = (lam[-1]/lam[-2])*lam[-1]
     transition_lambda_temp = np.insert(lam,0,transition_lambda0)
@@ -215,6 +224,23 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
                     break
         if found and not settings.overwrite:     
             continue
+
+        # ----- COMPUTE THE LIMB DARKENING MASK FOR THE STAR -----
+        print("Computing limb darkening for star {0:d}...".format(s['ID']))
+        mapsize = 1800
+        u1=0.0473
+        u2=0.0841 # solar limb darkening pending star-by-star values
+        mu = np.zeros((mapsize,mapsize))
+        ld_mask = np.zeros((mapsize,mapsize))
+        for j in range(0,mapsize):
+            for k in range(0,mapsize):
+                mu[j,k] = np.sqrt((mapsize/2)**2 - (j-mapsize/2)**2 - (k-mapsize/2)**2) / (mapsize/2)
+        mu2 = np.maximum(1-mu,0)
+        ld_mask = 1 - (u1+1) * mu2 - u2 * mu2**2
+        ld_mask = np.maximum(ld_mask/mu,0)
+        ld_mask = np.nan_to_num(ld_mask)
+        
+        star_area = np.sum(ld_mask)*4/np.pi/mapsize**2
         
         # ----- START OF DISK IMAGING ----
         # Now we image the disk
@@ -252,12 +278,24 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
         j = np.where(p[:,pllabel.index('R')] > 0)
         tempnplanets = len(j[0])+1  # add 1 to include the star
         planet_data = np.zeros((tempnplanets,16+nlambda,ntimes)) # this will hold all star + planet data vs time & wavelength
+
+        lat_0 = (90.-s['I']) * np.pi/180.
+            
+        hires = np.exp(np.linspace(np.log(0.3),np.log(2.5),212027))
         
-        if 'Spectrum' in s.keys() and type(s['Spectrum']) == str and path.exists(s['Spectrum']):
-            hires, fstarhires = get_stellar_flux(s,lam,path=exovistapath,spectrum=s['Spectrum'])
+        if 'Spectrum' in s.keys() and type(s['Spectrum']) == str and path.exists(s['Spectrum']):  # I don't remember what this IF is for
+            if settings.starspots:
+                fstarhires = make_starmap.get_combined_spectrum(s,sp,lon_center=0.,lat_center=lat_0,mask=ld_mask,star_area=star_area)   # Implement the wavelengths more cleanly here
+                #make_starmap.star_map_ortho(s, sp, mask=ld_mask, lon_center=0., lat_center=lat_0) # for testing and creating images of the star
+            else:
+                fstarhires = make_starmap.get_quiet_spectrum(s,star_area=star_area)
         else:
-            hires, fstarhires = get_stellar_flux(s,lam,path=exovistapath)
-        
+            if settings.starspots:
+                fstarhires = make_starmap.get_combined_spectrum(s,sp,lon_center=0.,lat_center=lat_0,mask=ld_mask,star_area=star_area)
+                #make_starmap.star_map_ortho(s, sp, mask=ld_mask, lon_center=0., lat_center=lat_0) # for testing and creating images of the star
+            else:
+                fstarhires = make_starmap.get_quiet_spectrum(s,star_area=star_area)
+                
         # if it's just the star, there's no integration to do
         # just fill in planet_data with the time and flux
         nhires = len(hires)
@@ -356,7 +394,7 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
             platitude = np.arccos(z_uv0)/np.pi*180. # this sets latitude = 0 when pole-on...
             platitude = 90.-platitude # now we have -90 to +90, with +90 = North
 
-            # ----- INTEGRATE -----
+            # ----- N-BODY INTEGRATION -----
             # Step through all time steps to do this.
             # Make sure variables are expected type for call to C below
             curr_time = 0.
@@ -368,6 +406,7 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
             tlistfull = []
             translistfull = []
             for ip in range(0,tempnplanets-1): translistfull.append([])
+            spots_time = []
                         
             for it in range(0,ntimes):
                 if it%16==0: print('Star {0:d}, integration step {1:d}/{2:d}'.format(s['ID'],it,ntimes))
@@ -431,7 +470,15 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
                         planet_data[ip,3:9,it] = 0. # don't record a heliocentric orbit 
                     else: # if it's a planet... 
                         planet_data[ip,3:9,it] = [tempa[ip-1],tempe[ip-1],tempi[ip-1],templongnode[ip-1],tempargperi[ip-1],tempmeananom[ip-1]] # record the heliocentric orbit
-            #----- END OF INTEGRATION -----
+                        
+                spots_temp = np.zeros((len(sp),4))
+                for ii in range(0,len(sp)):
+                    spots_temp[ii,0] = sp['Latitude'][ii]
+                    spots_temp[ii,1] = sp['Longitude'][ii]
+                    spots_temp[ii,2] = sp['CurrentArea'][ii]
+                    spots_temp[ii,3] = sp['AreaRatio'][ii]
+                spots_time.append(spots_temp.astype('float32'))
+            #----- END OF N-BODY INTEGRATION -----
 
             #----- COMPILE LIST OF TRANSITS AND ECLIPSES -----
             tlistfinal = []
@@ -518,6 +565,22 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
                 # Get planet_radius/circumstellar_distance and reformat
                 Rpor = (tempp[ip-1,pllabel.index('R')] * 4.2635e-5) / r_helio # planet radius in AU divided by circumstellar distance in AU
                 Rpor2 = Rpor * Rpor
+                
+                # Finally, rotate unit vectors about z axis by system PA
+                x_temp = x_helio * cosPA + y_helio * sinPA    # AU
+                y_temp = -x_helio * sinPA + y_helio * cosPA   # AU
+                z_temp = z_helio                              # AU
+                # rotate unit vectors about x-axis by system inclination
+                x_sys = x_temp
+                y_sys = y_temp * cosinc + z_temp * sininc
+                z_sys = -y_temp * sininc + z_temp * cosinc
+                
+                dlongsign = np.arctan2(y_sys,x_sys)
+                r_sky = np.sqrt(x_sys*x_sys + y_sys*y_sys)
+                dlatsign = np.pi/2-np.arccos(z_sys/r_helio)
+                
+                xx = np.arange(0,len(dlongsign),1)
+                yy = np.zeros(len(dlongsign))
 
                 # output array
                 fp = np.zeros((ntimes,nhires))
@@ -536,12 +599,22 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
                     # extrapolate because it was giving errors precisely at the endpoints.
                     f = interp1d(plambda0,data0,kind='cubic',bounds_error=False,fill_value='extrapolate')
                     data = f(hires)
+
+                    xtest = np.arange(0,ntimes,1)
+                    sfluxtest = np.zeros(ntimes)
                     
                     # calculate planet flux (modulo some unimportant factors)
                     # data is geometric albedo
-                    for ii in range(0,ntimes): fp[ii] = data * Rpor2[ii] * phasefunc[ii] * fstarhires
-                    
-                
+                    if settings.starspots:
+                        for ii in range(0,ntimes):
+                            if ii%16==0: print('Star {0:d}, planet {1:d}, calculating spectra, step {2:d}/{3:d}'.format(s['ID'],ip,ii,ntimes))
+                            fstar_n = make_starmap.get_combined_spectrum(s,sp,lon_center=dlongsign[ii],lat_center=dlatsign[ii],planet=ip,index=ii,mask=ld_mask,star_area=star_area)
+                            if ip==1: sfluxtest[ii] = fstar_n[144]
+                            fp[ii] = data * Rpor2[ii] * phasefunc[ii] * fstar_n
+                            #make_starmap.star_map_ortho(s, sp, mask=ld_mask, lon_center=dlongsign[ii], lat_center=dlatsign[ii],planet=ip, index=ii) # for testing and creating images of the star
+                    else:
+                        for ii in range(0,ntimes): fp[ii] = data * Rpor2[ii] * phasefunc[ii] * fstarhires
+                        
                 # EXOPLANET INPUT MODEL CASE 2: The model is phase-resolved
                 if len(data0.shape)==2: # in this case, data0 is geometric albedo times the phase function (gI)
                     #print('CASE 2: albedo vs. wavelength and phase.')
@@ -564,22 +637,26 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
                     
                     # calculate planet flux (modulo some unimportant factors)
                     # data is geometric albedo times phase function
-                    for ii in range(0,ntimes): fp[ii] = data[ii] * Rpor2[ii] * fstarhires
+                    if settings.starspots:
+                        for ii in range(0,ntimes):
+                            fstar_n = make_starmap.get_combined_spectrum(s,sp,lon_center=dlongsign[ii],lat_center=dlatsign[ii],planet=ip,index=ii,mask=ld_mask,star_area=star_area)
+                            fp[ii] = data[ii] * Rpor2[ii] * fstar_n
+                            #make_starmap.star_map_ortho(s, sp, mask=ld_mask, lon_center=dlongsign[ii], lat_center=dlatsign[ii],planet=ip, index=ii) # for testing and creating images of the star
+                    else:
+                        for ii in range(0,ntimes): fp[ii] = data[ii] * Rpor2[ii] * fstarhires
                     
         
                 # EXOPLANET INPUT MODEL CASE 3: The model is resolved by 
                 # differential longitude and latitude
                 if len(data0.shape)==3: # in this case, data0 is geometric albedo times the phase function (gI)
                     #print('CASE 3: albedo vs. wavelength, longitude, and latitude.')
-                    
+                
                     # Below we calculate dlong, the difference between the
                     # planet's longitude pointing toward the star and the
                     # planet's longitude pointing toward the observer.
                     # A derivation of this appears in the exoVista STG meeting
                     # notes from 09 Jan 2022. This implicitly assumes zero obliquity
-                    # and the inclination of the planet's orbit doesn't
-                    # change over time.
-                    
+                    # and the inclination of the planet's orbit doesn't change over time.
                     d_x = 0.
                     d_y = 0.
                     d_z = dstarAU
@@ -599,8 +676,9 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
                     o_z = p_z + s_z
                     o_mag = np.sqrt(o_x * o_x + o_y * o_y + o_z * o_z)
                     dlong = np.arccos((p_x*o_x + p_y*o_y + p_z*o_z)/(p_mag*o_mag)) # differential longitude (observer's planet longitude - stellar illumination longitude)
+                
                     dlong *= (180./np.pi)
-                    
+                
                     # First, get the latitude index
                     f = interp1d(lat,np.arange(len(lat)),kind='cubic')
                     lat_indices = f(platitude[ip-1])
@@ -636,7 +714,12 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
                     
                     # calculate planet flux (modulo some unimportant factors)
                     # data is geometric albedo times phase function
-                    for ii in range(0,ntimes): fp[ii] = data[ii] * Rpor2[ii] * fstarhires
+                    if settings.starspots:
+                        for ii in range(0,ntimes):
+                            fstar_n = make_starmap.get_combined_spectrum(s,sp,lon_center=dlong[ii]-np.pi,lat_center=0.,mask=ld_mask,star_area=star_area)
+                            fp[ii] = data[ii] * Rpor2[ii] * fstar_n
+                    else:
+                        for ii in range(0,ntimes): fp[ii] = data[ii] * Rpor2[ii] * fstarhires
                     
                 # Now that we have fp, we can bin it by wavelength
                 # and divide by the observer's fstar to get contrast
@@ -682,7 +765,7 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
 
         hdr0['DATE'] = str(datetime.now())
         hdr0.comments['DATE'] = 'Date and time created'
-        hdr0['VERSION'] = 2.33
+        hdr0['VERSION'] = 2.5
         hdr0.comments['VERSION'] = 'Version of code used; used for post-processing scripts.'
         hdr0['N_EXT'] = 3+tempnp
         hdr0.comments['N_EXT'] = 'Last extension' # need to add this to the main header to enable extensions
@@ -694,7 +777,7 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
         hdr0.comments['LAMMAX'] = 'Maximum wavelength (microns)'
         hdr0['COMMENT'] = 'Stellar wavelength vector'
 
-        hdu0 = fits.PrimaryHDU(lam, header=hdr0)
+        hdu0 = fits.PrimaryHDU(lam.astype('float32'), header=hdr0)
 
         # HDU 1: WAVELENGTHS FOR DISK SPECTRUM
         hdr1 = fits.Header()
@@ -706,7 +789,7 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
         hdr1.comments['LAMMAX'] = 'Maximum wavelength (microns)'
         hdr1['COMMENT'] = 'Disk wavelength vector'
         
-        hdu1 = fits.ImageHDU(lambda_disk, header=hdr1)
+        hdu1 = fits.ImageHDU(lambda_disk.astype('float32'), header=hdr1)
 
         # HDU 2: DISK CONTRAST CUBE
         hdr2 = fits.Header()
@@ -738,31 +821,40 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
         hdr2['COMMENT'] = 'Disk contrast cube'
 
         # arrays must be transposed for backward compatibility with IDL outputs
-        hdu2 = fits.ImageHDU(disk_contrast_image.T, header=hdr2)
+        hdu2 = fits.ImageHDU(disk_contrast_image.T.astype('float32'), header=hdr2)
 
         # HDU 3: LIST OF TRANSITS AND ECLIPSES
         hdr3 = fits.Header()
         hdr3['BASELINE'] = settings.timemax*365.25
         hdr3.comments['BASELINE'] = 'Length of baseline (days)'
         
-        hdu3 = fits.ImageHDU(transits, header=hdr3)
+        hdu3 = fits.ImageHDU(transits.astype('float32'), header=hdr3)
         
-        # HDU 4: STAR PROPERTIES
+        # HDU 4: STARSPOTS LIST
         hdr4 = fits.Header()
+        hdr4['BASELINE'] = settings.timemax*365.25
+        hdr4.comments['BASELINE'] = 'Length of baseline (days)'
+
+        #spots_time = np.array(spots_time)
+        #print(spots_time)
+        hdu4 = fits.ImageHDU(spots_time, header=hdr4)
+        
+        # HDU 5: STAR PROPERTIES
+        hdr5 = fits.Header()
         ic = 0
         for ih in starbase.keys():
-            if ih not in s.index: hdr4[ih] = 'Invalid tag'
-            elif pd.isnull(s[ih]): hdr4[ih] = 'NaN'
-            else: hdr4[ih] = s[ih]
-            if ih in scomments: hdr4.comments[ih] = scomments[ih]
-        hdr4['PXSCLMAS'] = settings.pixscale_mas
-        hdr4.comments['PXSCLMAS'] = 'Pixel scale (mas)'
-        hdr4['COMMENT'] = 'Star data array'
+            if ih not in s.index: hdr5[ih] = 'Invalid tag'
+            elif pd.isnull(s[ih]): hdr5[ih] = 'NaN'
+            else: hdr5[ih] = s[ih]
+            if ih in scomments: hdr5.comments[ih] = scomments[ih]
+        hdr5['PXSCLMAS'] = settings.pixscale_mas
+        hdr5.comments['PXSCLMAS'] = 'Pixel scale (mas)'
+        hdr5['COMMENT'] = 'Star data array'
         
-        hdu4 = fits.ImageHDU(planet_data[0].T, header=hdr4)
+        hdu5 = fits.ImageHDU(planet_data[0].T.astype('float32'), header=hdr5)
         
-        hdul = fits.HDUList([hdu0, hdu1, hdu2, hdu3, hdu4])
-
+        hdul = fits.HDUList([hdu0, hdu1, hdu2, hdu3, hdu4, hdu5])
+        
         # HDRN: PLANET PROPERTIES
         for ip in range(1,len(planet_data)):
             hdrn = fits.Header()
@@ -777,7 +869,7 @@ def generate_scene(stars, planets, disks, albedos, compositions, settings):
             hdrn.comments['PXSCLMAS'] = 'Pixel scale (mas)'
             hdrn['COMMENT'] = 'Planet data array'
             
-            hdun = fits.ImageHDU(planet_data[ip].T, header=hdrn)
+            hdun = fits.ImageHDU(planet_data[ip].T.astype('float32'), header=hdrn)
 
             hdul.append(hdun)
             
@@ -1061,7 +1153,9 @@ def get_stellar_flux(s, lam, path='./', spectrum = None):
     lnlambdamax = np.log(np.max(klambda))
     lnlambdamin = np.log(np.min(klambda))
     nlambda = int(np.ceil((lnlambdamax-lnlambdamin)/dlnlambda))
-    interplambda = np.linspace(lnlambdamin,lnlambdamax,nlambda)
+
+    lamstep = np.log(1+1/settings.specres)
+    interplambda = np.arange(lnlambdamin,lnlambdamax,lamstep)
     interplambda = np.exp(interplambda)
     transition_lambda0 = np.sqrt(lam[0:len(lam)-1]*lam[1:])
     transition_lambda_temp = np.insert(transition_lambda0,0,transition_lambda0[0]*lam[0]/lam[1])
@@ -1083,7 +1177,7 @@ def get_stellar_flux(s, lam, path='./', spectrum = None):
     return interplambda, fstar
 
 
-######### WARNING: THIS ROUTINE IS LIKELY TO BE REWRITTEN #########
+######### WARNING: THIS IS A LEGACY FUNCTION #########
 def getkurucz(teff, logg, metallicity=0.0):
     '''
     For a given Teff, log(g), and metallicity, retrieves the

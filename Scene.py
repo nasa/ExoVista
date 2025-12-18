@@ -25,9 +25,13 @@ class Scene():
         if self.version <= 2.1:
             self.specstart = 15
             self.hstar = 3
+        elif version <= 2.4:
+            specstart = 16
+            hstar = 4
         else:
-            self.specstart = 16
-            self.hstar = 4
+            specstart = 16
+            hstar = 5
+            
         self.star_ext = self.hstar
         self.planet_ext = self.hstar+1 #first planet extension
     
@@ -262,7 +266,7 @@ class Scene():
 
     def getTransitingPlanets(self):
         
-        if self.version <= 2.1:
+        if self.version <= 2.4:
             print('Warning: attempt to retrieve transiting planets, but transiting planets are not available.')
             return None
         d, h = astropy.io.fits.getdata(self.inputfile, ext=3, header=True)
@@ -279,7 +283,7 @@ class Scene():
         # Each entry within a list is a pair consisting of the ingress and egress time
         # Or the start/end time of the simulation if the event is in progress
         
-        if self.version <= 2.1:
+        if self.version <= 2.4:
             print('Warning: attempt to retrieve transit times, but transit times are not available.')
             return None, None
         d, h = astropy.io.fits.getdata(self.inputfile, ext=3, header=True)

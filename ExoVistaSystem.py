@@ -3,6 +3,7 @@ import pandas as pd
 import sys
 from os import path
 from src import read_solarsystem
+from src import generate_starspots
 from src import generate_scene
 from src import Settings
 
@@ -69,7 +70,10 @@ while not path.exists(filename):
             ndisk -= 1
             break
 
-settings = Settings.Settings(output_dir='./output', ncomponents=ndisk, timemax=10.) # "standard" configuration
+# "standard" settings configuration, uses a hard-coded random seed for comparability
+settings = Settings.Settings(output_dir='./output', ncomponents=ndisk, timemax=10.0, dt=10/365.25, starspots=True, diskoff=False, seed=0)
+
 s,p,a,d,c,new_settings = read_solarsystem.read_solarsystem(settings,system_file=filename)
+sp = generate_starspots.generate_spots(s,new_settings)
 print('Generating scene...')
-generate_scene.generate_scene(s,p,d,a,c,new_settings)
+generate_scene.generate_scene(s,sp,p,d,a,c,new_settings)

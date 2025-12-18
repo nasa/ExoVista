@@ -4,6 +4,8 @@ import numpy as np
 grav_const    = 4.*np.pi**2 # in AU^3 yr^-2 solar_mass^-1
 c = 2.998e8 / 1.496e11 * 365.25 * 24. * 60. * 60. # AU yr^-1
 planck = 6.62608e-27
+R_sun = 6.957e10
+MSH = 1e-6 * 0.5 * 4*np.pi*R_sun**2 # micro-solar hemisphere
 
 # Data structure parameters
 maxnplanets   = 30
@@ -46,10 +48,10 @@ master_nsizes = len(master_rdust_boundaries)
 master_drdust = master_rdust_boundaries[1:master_nsizes]-master_rdust_boundaries[0:master_nsizes-1]
 
 # Table headings
-starbase = {'ID':0, 'HIP':0, 'TYC':'', 'dist':10., 'M_V':0., 'Vmag':0., 'Bmag':0., 'Umag':float('nan'), 'Rmag':float('nan'), 'Imag':float('nan'), 'Jmag':float('nan'), 'Hmag':float('nan'), 'Kmag':float('nan'), 'Type':'', 'Lstar':0., 'logg':0., 'Teff':0., 'angdiam':0., 'mass':0., 'rstar':0., 'RA':0., 'Dec':0., 'pmRA':0., 'pmDec':0., 'BmV':0., 'PA':0., 'I':60., 'Spectrum':None}
-alias = {'ID':'ID', 'HIP':'HIP', 'TYC':'TYC', 'dist':'dist', 'MV':'M_V', 'Vmag':'Vmag', 'Bmag':'Bmag', 'Umag':'Umag', 'Rmag':'Rmag', 'Imag':'Imag', 'Jmag':'Jmag', 'Hmag':'Hmag', 'Kmag':'Kmag', 'Type':'Type', 'SpT':'Type', 'Lstar':'Lstar', 'Lum':'Lstar', 'logg':'logg', 'Teff':'Teff', 'angdiam':'angdiam', 'mass':'mass', 'mstar':'mass', 'rstar':'rstar', 'rad':'rstar', 'RA':'RA', 'De':'Dec', 'pmRA':'pmRA', 'pmDe':'pmDec', 'BmV':'BmV', 'PA':'PA', 'Inc':'I', 'Spectrum':'Spectrum'}
+starbase = {'ID':0, 'HIP':0, 'TYC':'', 'dist':10., 'M_V':0., 'Vmag':0., 'Bmag':0., 'Umag':float('nan'), 'Rmag':float('nan'), 'Imag':float('nan'), 'Jmag':float('nan'), 'Hmag':float('nan'), 'Kmag':float('nan'), 'Type':'', 'Lstar':0., 'logg':0., 'Teff':0., 'angdiam':0., 'mass':0., 'rstar':0., 'RA':0., 'Dec':0., 'pmRA':0., 'pmDec':0., 'BmV':0., 'PA':0., 'I':60., 'Spectrum':None, 'SpotCoverage':0.2, 'SpotWarmupTime':0., 'FacWarmupTime':0., 'InitialArea':10.*MSH, 'MeanSpotArea':500.*MSH, 'LogSigmaArea':0.2, 'SpotDistribution':'iso', 'GrowthRate':0.52, 'DecayRate':10.89*MSH, 'TeffPenumbra':2700, 'TeffUmbra':2500, 'GranCoverage':0.2, 'GranAmplitude':0.01, 'GranPeriod':3.0, 'GranDeltaT':200}
+alias = {'ID':'ID', 'HIP':'HIP', 'TYC':'TYC', 'dist':'dist', 'MV':'M_V', 'Vmag':'Vmag', 'Bmag':'Bmag', 'Umag':'Umag', 'Rmag':'Rmag', 'Imag':'Imag', 'Jmag':'Jmag', 'Hmag':'Hmag', 'Kmag':'Kmag', 'Type':'Type', 'SpT':'Type', 'Lstar':'Lstar', 'Lum':'Lstar', 'logg':'logg', 'Teff':'Teff', 'angdiam':'angdiam', 'mass':'mass', 'mstar':'mass', 'rstar':'rstar', 'rad':'rstar', 'RA':'RA', 'De':'Dec', 'pmRA':'pmRA', 'pmDe':'pmDec', 'BmV':'BmV', 'PA':'PA', 'Inc':'I', 'Spectrum':'Spectrum', 'SpotCoverage':'SpotCoverage', 'SpotWarmupTime':'SpotWarmupTime', 'FacWarmupTime':'FacWarmupTime', 'InitialArea':'InitialArea', 'MeanSpotArea':'MeanSpotArea', 'LogSigmaArea':'LogSigmaArea', 'SpotDistribution':'SpotDistribution', 'GrowthRate':'GrowthRate', 'DecayRate':'DecayRate', 'TeffPenumbra':'TeffPenumbra', 'TeffUmbra':'TeffUmbra', 'GranCoverage':'GranCoverage', 'GranAmplitude':'GranAmplitude', 'GranPeriod':'GranPeriod', 'GranDeltaT':'GranDeltaT'}
 intlist = ['ID', 'HIP']
-strlist = ['TYC', 'WDS', 'Type', 'Spectrum']
+strlist = ['TYC', 'WDS', 'Type', 'Spectrum','SpotDistribution']
 keplist = ('a','e','i','longnode','argperi','meananom')
 pllabel = ('M','R','a','e','i','longnode','argperi','meananom')
 dlabel = ('n', 'longnode', 'i', 'nzodis', 'r', 'dror', 'rinner', 'eta', 'hor', 'g0', 'g1', 'g2', 'w0', 'w1', 'w2')

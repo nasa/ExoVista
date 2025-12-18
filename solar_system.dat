@@ -1,7 +1,7 @@
 Star
 ID      999
 HIP     -1
-TYC2    SUN
+TYC     SUN
 dist    10.
 M_V     4.83
 BmV     0.65
@@ -13,6 +13,8 @@ mass    1.0
 rstar   1.0
 PA      30.0
 I       60.0
+SpotCoverage	0.005
+SpotDistribution	solar
 Planets
   M        R       a            e             i          longnode    argperi     meananom    albedo
   0.0553   0.383   0.387099     0.205625      7.003625   48.302049   29.188230  174.79439    Mars

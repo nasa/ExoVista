@@ -158,7 +158,7 @@ def generate_disks(stars, planets, settings, nexozodis=None, rand_components=Fal
             lbouter = np.log10(bouter)
             measure = np.sum(lbouter-lbinner)
             n = 0
-            
+             
             while (dror < settings.dror_min) or (r0 < settings.r_min[j] or settings.r_max[j] < r0) and n<50:
                 rand = rng.random()*measure
                 ip = 0
