@@ -4,9 +4,9 @@ from scipy import interpolate
 import load_scene
 import matplotlib.pyplot as plt
 import os.path
-from src.constants import *
-from src import Settings
-from src import generate_scene
+from exovista.constants import *
+from exovista import Settings
+from exovista import generate_scene
 
 def add_background(inputfile, time = 0):
     """

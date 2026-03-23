@@ -1,5 +1,4 @@
 # distutils: language = c++
-# distutils: sources = [Integrator.cpp]
 
 cdef class PyIntegrator:
     cdef Integrator *thisptr

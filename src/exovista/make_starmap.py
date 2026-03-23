@@ -6,10 +6,10 @@ from matplotlib import patches
 from matplotlib.collections import PatchCollection
 from astropy.io import fits
 from PIL import Image
-#from src import wrapStarmap
+#from exovista import wrapStarmap
 import time
 
-from src.constants import *
+from exovista.constants import *
 
 lam = np.exp(np.linspace(np.log(0.3),np.log(2.5),212027))
 #lam = np.linspace(0.05,5.5,54500)

@@ -1,6 +1,6 @@
 import numpy as np
-from src import coordinates as coord
-from src import wrapIntegrator
+from exovista import coordinates as coord
+from exovista import wrapIntegrator
 
 max_n_planets = 100
 max_n_equations = 6*max_n_planets

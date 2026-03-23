@@ -1,5 +1,4 @@
 # distutils: language = c++
-# distutils: sources = [Image.cpp]
 
 cdef class PyImage:
     cdef Image *thisptr

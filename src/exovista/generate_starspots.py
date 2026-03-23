@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import time
 
-from src import Settings
-from src.constants import MSH,R_sun
+from exovista import Settings
+from exovista.constants import MSH, R_sun
 
 settings = Settings.Settings()
 
@@ -153,6 +153,11 @@ def generate_mature_spots(star, spots, rng):
     spots = pd.DataFrame(spot_list)
     return spots
 
+def birth_spots(dt, star, spots, rng):
+    N_exp = coverage * 4*np.pi*(star['rstar']*R_Sun)**2 / star['MeanSpotArea'] * dt / mean_lifetime
+    nspots = rng.poisson(lam=nspots)
+    spots = generate_new_spots(nspots, star, spots, rng)
+    return spots
 
 def generate_new_spots(nspots, star, rng):
     new_max_areas = rng.lognormal(mean=np.log(star['MeanSpotArea']/MSH),
@@ -180,20 +185,6 @@ def generate_new_spots(nspots, star, rng):
     spots = pd.DataFrame(spot_list)
     return spots
 
-def birth_spots(dt, star, spots, rng):
-    N_exp = coverage * 4*np.pi*(star['rstar']*R_Sun)**2 / star['MeanSpotArea'] * dt / mean_lifetime
-    nspots = rng.poisson(lam=nspots)
-    spots = generate_new_spots(nspots, star, spots, rng)
-    return
-
-def birth_faculae(dt):
-    # pending getting spots working
-    return
-
-def get_flares(star):
-    # pending getting spots working
-    return
-
 def age_spot(spot, growth_rate, decay_rate, dt):
     if spot['IsGrowing']:
         tau = np.log(1+growth_rate) # inverse time to grow from A to A(1+g) (exponential growth)
@@ -217,9 +208,6 @@ def age_spot(spot, growth_rate, decay_rate, dt):
                 
     return spot
 
-def age_star(star, spots, dt):
-    return
-
 def get_coordinates(nspots, distribution, rng):
     
     if distribution == 'solar':
@@ -233,3 +221,15 @@ def get_coordinates(nspots, distribution, rng):
     else: raise ValueError('Unknown spot distribution function.')
     
     return lat, lon
+
+
+def age_star(star, spots, dt):
+    return
+
+def birth_faculae(dt):
+    # pending getting spots working
+    return
+
+def get_flares(star):
+    # pending getting spots working
+    return

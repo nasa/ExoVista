@@ -7,12 +7,12 @@ from os import path,mkdir,system,listdir,remove
 from astropy.io import fits
 from datetime import datetime
 import cython
-from src import coordinates as coord
-from src import nbody
-from src import wrapImage
-from src.constants import *
-from src import Settings
-from src import make_starmap
+from exovista import coordinates as coord
+from exovista import nbody
+from exovista import wrapImage
+from exovista.constants import *
+from exovista import Settings
+from exovista import make_starmap
 
 settings = Settings.Settings()
 
@@ -171,7 +171,7 @@ def generate_scene(stars, spots, planets, disks, albedos, compositions, settings
     nplanets = len(planets[0])
 
     # Set up spread in phase functions
-    fphase = open('phase_spread.dat','r')
+    fphase = open(DATA_DIR.joinpath('phase_spread.dat'), 'r')
     fphase.readline()
     lines = fphase.readlines()
     phases = np.zeros(len(lines))
@@ -555,7 +555,7 @@ def generate_scene(stars, spots, planets, disks, albedos, compositions, settings
                 # Read the albedo file
                 # Upon return, phi could be undefined, phase angle, or differential longitude
                 # Latitude could be undefined or latitude
-                albedo_file = 'geometric_albedo_files/' + albedos[i][ip-1] + '.txt'
+                albedo_file = str(DATA_DIR.joinpath('geometric_albedo_files')) + '/' + albedos[i][ip-1] + '.txt'
                 plambda0, phi, lat, data0 = read_albedo_file(albedo_file)
                 ll = 0
                 for jj in range(0,len(plambda0)):
@@ -1219,7 +1219,7 @@ def getkurucz(teff, logg, metallicity=0.0):
         return
     
     # Open model grid file
-    fin = open('fp00k2odfnew.pck','r')
+    fin = open(DATA_DIR.joinpath('fp00k2odfnew.pck'), 'r')
     for i in range(0,22): fin.readline()
 
     # Read the wavelengths (in nm)

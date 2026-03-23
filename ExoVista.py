@@ -1,14 +1,14 @@
 import numpy as np
 import pandas as pd
 import os
-from src import load_stars
-from src import generate_starspots
-from src import generate_planets
-from src import generate_disks
-from src import generate_scene
-from src import read_solarsystem
-from src import Settings
-from src import make_starmap
+from exovista import load_stars
+from exovista import generate_starspots
+from exovista import generate_planets
+from exovista import generate_disks
+from exovista import generate_scene
+from exovista import read_solarsystem
+from exovista import Settings
+from exovista import make_starmap
 
 # ExoVista v2.4
 

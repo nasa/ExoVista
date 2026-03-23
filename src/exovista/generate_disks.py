@@ -4,8 +4,8 @@ import os
 from astropy.io import fits
 from datetime import datetime
 import matplotlib.pyplot as plt
-from src.constants import *
-from src import Settings
+from exovista.constants import *
+from exovista import Settings
 
 settings = Settings.Settings()
 
@@ -46,7 +46,7 @@ def generate_disks(stars, planets, settings, nexozodis=None, rand_components=Fal
     if nexozodis is not None:
         nzl = nexozodis
     else:
-        with fits.open('nominal_maxL_distribution-Dec2019.fits') as data: nexozodi_levels = pd.DataFrame(data[0].data)
+        with fits.open(DATA_DIR.joinpath('nominal_maxL_distribution-Dec2019.fits')) as data: nexozodi_levels = pd.DataFrame(data[0].data)
         nzl = np.array(nexozodi_levels[nexozodi_levels.columns[0]].values)
         rng.shuffle(nzl,axis=0)  # Deterministic version for testing
     
@@ -76,9 +76,8 @@ def generate_disks(stars, planets, settings, nexozodis=None, rand_components=Fal
     things down a bit.
     '''
 
-    lqqdir = 'lqq_files/'
     complist = []
-    for root, dirs, files in os.walk(lqqdir):
+    for root, dirs, files in os.walk(lqq_dir):
         for dir0 in dirs:
             complist.append(dir0)
     complist = np.array(complist)

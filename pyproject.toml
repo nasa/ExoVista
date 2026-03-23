@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools", "wheel", "Cython"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "exovista"
+version = "2.4"
+description = "Generates synthetic exoplanetary systems for direct imaging mission simulations."
+authors = [{name = "Alex Howe", email = "alex.r.howe@nasa.gov"}]
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "matplotlib",
+    "astropy",
+    "Cython",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
