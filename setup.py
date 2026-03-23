@@ -20,7 +20,7 @@ ext_modules = cythonize(
 
 setup(
     name="exovista",
-    version="2.4",
+    version="2.5",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     ext_modules=ext_modules,

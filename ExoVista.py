@@ -10,7 +10,7 @@ from exovista import read_solarsystem
 from exovista import Settings
 from exovista import make_starmap
 
-# ExoVista v2.4
+# ExoVista v2.5
 
 # Generates a universe of simulated planetary systems based on a stellar target list.
 
