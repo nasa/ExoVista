@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
-from src import generate_disks
-from src.constants import *
-from src import Settings
+from exovista import generate_disks
+from exovista.constants import *
+from exovista import Settings
 
 settings = Settings.Settings()
 

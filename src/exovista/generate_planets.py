@@ -2,14 +2,14 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp2d
 from scipy.stats import norm
-from src.constants import pllabel, maxnplanets
-from src import Settings
+from exovista.constants import pllabel, maxnplanets, DATA_DIR
+from exovista import Settings
 import matplotlib.pyplot as plt
 
 settings = Settings.Settings()
 
 # Read in bins for planet types.
-fbound = open('planetbins.dat','r')
+fbound = open(DATA_DIR.joinpath('planetbins.dat'), 'r')
 line = fbound.readline().strip()
 if line!='Radius':
     print('Error: wrong format in planetbins.dat')
@@ -293,11 +293,11 @@ def load_occurrence_rates(subdivide=1, bound='', mass=True, usebins=False):
     tag = 'Radius'
     subdivide = min(max(1,subdivide),10) # Keep the occurrence rate grid a reasonable size.
     
-    filename = 'occurrence_rates/NominalOcc_' + tag + '.csv'
-    if bound=='lower': filename = 'occurrence_rates/PessimisticOcc_' + tag + '.csv'
-    if bound=='upper': filename = 'occurrence_rates/OptimisticOcc_'  + tag + '.csv'
+    filename = str(DATA_DIR.joinpath('occurrence_rates/NominalOcc_' + tag + '.csv'))
+    if bound=='lower': filename = str(DATA_DIR.joinpath('occurrence_rates/PessimisticOcc_' + tag + '.csv'))
+    if bound=='upper': filename = str(DATA_DIR.joinpath('occurrence_rates/OptimisticOcc_'  + tag + '.csv'))
     
-    return load_occurrence_rates_convolved('occurrence_rates/NominalOcc_', subdivide=subdivide, usebins=usebins)
+    return load_occurrence_rates_convolved(str(DATA_DIR.joinpath('occurrence_rates/NominalOcc_')), subdivide=subdivide, usebins=usebins)
 
 
 def load_occurrence_rates_convolved(filepath, subdivide=1, usebins=False):
@@ -878,8 +878,8 @@ def assign_albedo_file(stars, plorb, rng):
     plalbedo = []
     
     nstars = len(stars)
-    directory = './geometric_albedo_files/'
-    albedos = pd.read_csv('albedo_list.csv')
+    directory = str(DATA_DIR.joinpath('geometric_albedo_files')) + '/'
+    albedos = pd.read_csv(DATA_DIR.joinpath('albedo_list.csv'))
     
     files = albedos['Files'].values
     probs = albedos['prob'].values

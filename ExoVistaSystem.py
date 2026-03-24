@@ -2,10 +2,10 @@ import numpy as np
 import pandas as pd
 import sys
 from os import path
-from src import read_solarsystem
-from src import generate_starspots
-from src import generate_scene
-from src import Settings
+from exovista import read_solarsystem
+from exovista import generate_starspots
+from exovista import generate_scene
+from exovista import Settings
 
 # ExoVista v2.4
 

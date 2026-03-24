@@ -1,3 +1,5 @@
+from importlib import resources
+
 import numpy as np
 
 # Physical constants
@@ -13,8 +15,8 @@ mincomponents = 1 # Minimum number of disk components, warm dust / exo-zodi requ
 maxcomponents = 3 # Maximum number of disk components, highest plausible is 3-4.
 
 # File paths
-exovistapath  = './'
-lqq_dir       = 'lqq_files/'
+DATA_DIR = resources.files("exovista").joinpath("data")
+lqq_dir = DATA_DIR.joinpath("lqq_files")
 
 # Define debris disk grain sizes
 '''

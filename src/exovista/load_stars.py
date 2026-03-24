@@ -2,7 +2,7 @@ import math
 import numpy as np
 from scipy.interpolate import interp1d
 import pandas as pd
-from src.constants import *
+from exovista.constants import *
 
 def load_target_list(target_list_file):
 
@@ -136,7 +136,8 @@ def load_stars(target_list_file):
     target_list = target_list[~target_list['Type'].str.contains('II',na=False) & ~(target_list['Type'].str.contains('I',na=False) & ~target_list['Type'].str.contains('IV',na=False))]
     
     # Use Eric Mamajek's table of MS stars to interpolate mass and effective temperature
-    fin2 = open('mamajek_dwarf.txt')
+    mamajek_path = DATA_DIR.joinpath("mamajek_dwarf.txt")
+    fin2 = open(mamajek_path)
     data = fin2.readlines()
     data = [d for d in data if d[0]!='#']
     slen = len(data)
