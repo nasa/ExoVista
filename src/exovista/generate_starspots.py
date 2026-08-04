@@ -25,14 +25,24 @@ def generate_spots(stars, settings):
         if s['SpotDistribution']=='big':
             size = s['SpotCoverage']*2.e6*MSH*s['rstar']**2
             spots = pd.DataFrame({'Star':        [s['ID']],
-                                  'Latitude':    [-40.],
-                                  'Longitude':   [100.],
+                                  'Latitude':    [45.],
+                                  'Longitude':   [0.],
                                   'MaxArea':     [size],
                                   'InitialArea': [size],
                                   'CurrentArea': [size],
                                   'AreaRatio':   [5.0],        # ratio of spot area/umbra area
                                   'IsGrowing':   [False]})
-        
+            
+        elif s['SpotDistribution']=='test':
+             spots = pd.DataFrame({'Star':        [s['ID'],s['ID'],s['ID'],s['ID'],s['ID'],s['ID'],s['ID'],s['ID']],
+                                   'Latitude':    [45.,45.,45.,45.,45.,45.,45.,45.],
+                                   'Longitude':   [0.,45.,90.,135.,180.,225.,270.,315.],
+                                   'MaxArea':     [6400*MSH,4900*MSH,3600*MSH,2500*MSH,1600*MSH,900*MSH,400*MSH,100*MSH],
+                                   'InitialArea': [6400*MSH,4900*MSH,3600*MSH,2500*MSH,1600*MSH,900*MSH,400*MSH,100*MSH],
+                                   'CurrentArea': [6400*MSH,4900*MSH,3600*MSH,2500*MSH,1600*MSH,900*MSH,400*MSH,100*MSH],
+                                   'AreaRatio':   [1.01,1.01,1.01,1.01,1.01,1.01,1.01,1.01],        # ratio of spot area/umbra area
+                                   'IsGrowing':   [False,False,False,False,False,False,False,False]})
+             
         else:
             spots = pd.DataFrame({'Star':        [],
                                   'Latitude':    [],
@@ -227,9 +237,7 @@ def age_star(star, spots, dt):
     return
 
 def birth_faculae(dt):
-    # pending getting spots working
     return
 
 def get_flares(star):
-    # pending getting spots working
     return

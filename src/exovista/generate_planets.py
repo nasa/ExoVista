@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from scipy.interpolate import interp2d
+from scipy.interpolate import RectBivariateSpline
 from scipy.stats import norm
 from exovista.constants import pllabel, maxnplanets, DATA_DIR
 from exovista import Settings
@@ -91,7 +91,7 @@ def generate_planets(stars, settings, bound='', nomcdraw=False, addearth=False, 
     nstars = len(stars)
     
     # Check that "stars" has the necessary tags
-    if 'Lstar' not in stars.head():
+    if 'Lstar' not in stars:
         print('Error: stars input must be a DataFrame including column \"Lstar\"')
         exit()
         return
@@ -120,10 +120,10 @@ def generate_planets(stars, settings, bound='', nomcdraw=False, addearth=False, 
     '''
     
     # Add position angle and inclination of host stars if needed.
-    if 'PA' not in stars.head():
+    if 'PA' not in stars:
         temp = np.zeros(nstars)
         stars['PA'] = temp
-    if 'I' not in stars.head():
+    if 'I' not in stars:
         temp = np.zeros(nstars)
         stars['I'] = temp
   
@@ -165,7 +165,7 @@ def generate_planets(stars, settings, bound='', nomcdraw=False, addearth=False, 
             try: mmax = np.where(mbins>=mbound[i+1])[0][0]
             except: mmax = len(mbins)
             
-            for j in range(0,len(abound)-1):
+            for j in range(0,len(abound[i])-1):
                 try: amin = np.where(abins>=abound[i,j])[0][0]
                 except: amin = 0
                 try: amax = np.where(abins>=abound[i,j+1])[0][0]
@@ -525,25 +525,21 @@ def load_occurrence_rates_convolved(filepath, subdivide=1, usebins=False):
     rvec = np.log(rvec)
     avec = np.log(avec)
     
-    occ_interpR = interp2d(rvec, avec, CVoccrateR, kind='cubic')
-    occ_interpM = interp2d(mvec, avec, CVoccrateM, kind='cubic')
+    occ_interpR = RectBivariateSpline(rvec, avec, CVoccrateR.T)
+    occ_interpM = RectBivariateSpline(mvec, avec, CVoccrateM.T)
 
     # Combine the scaled grids into the final combined grid
     finalsplit = np.where(rmid>=rsplit)[0][0]
     newoccrate = np.zeros((len(amid),len(mmid)))
-    newoccrate[:,0:finalsplit] = occ_interpR(np.log(rmid[0:finalsplit]),np.log(amid))
-    newoccrate[:,finalsplit:] = occ_interpM(np.log(mmid[finalsplit:]),np.log(amid))
+    
+    newoccrate[:,0:finalsplit] = occ_interpR(np.log(rmid[0:finalsplit]),np.log(amid)).T
+    newoccrate[:,finalsplit:] = occ_interpM(np.log(mmid[finalsplit:]),np.log(amid)).T
     newoccrate = newoccrate * (newoccrate > 0) # Occurence rate cannot be negative
-
+    
     #Rescale to the final pixel size
     newoccrate[:,0:finalsplit] *= np.outer(np.log(asize), np.log(rsize))[:,0:finalsplit]
     newoccrate[:,finalsplit:] *= np.outer(np.log(asize), np.log(msize))[:,finalsplit:]
     
-    if np.max(newoccrate) > 1:
-        print('Error: max occurrence rate > 1. Try increasing the grid size.')
-        exit()
-        # Easier to see the error message without a return.
-        
     return newoccrate, medge, redge, aedge, mmid, rmid, amid
 
 
@@ -693,13 +689,13 @@ def load_occurrence_rates_combined(filepath, subdivide=1, usebins=False):
     rvec = np.log(rvec)
     avec = np.log(avec)
     
-    occ_interpR = interp2d(rvec, avec, occrateR, kind='cubic')
-    occ_interpM = interp2d(mvec, avec, occrateM, kind='cubic')
+    occ_interpR = RectBivariateSpline(rvec, avec, occrateR.T)
+    occ_interpM = RectBivariateSpline(mvec, avec, occrateM.T)
     
     risplit = np.where(rmid>=rsplit)[0][0]
     newoccrate = np.zeros((len(amid),len(mmid)))
-    newoccrate[:,0:risplit] = occ_interpR(np.log(rmid[0:risplit]),np.log(amid))
-    newoccrate[:,risplit:] = occ_interpM(np.log(mmid[risplit:]),np.log(amid))
+    newoccrate[:,0:risplit] = occ_interpR(np.log(rmid[0:risplit]),np.log(amid)).T
+    newoccrate[:,risplit:] = occ_interpM(np.log(mmid[risplit:]),np.log(amid)).T
     newoccrate = newoccrate * (newoccrate > 0) # Occurence rate cannot be negative
     
     # Multiply table-resolution occurrence rates by pixel size. AM I ACTUALLY USING THESE?!

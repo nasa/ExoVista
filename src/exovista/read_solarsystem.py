@@ -89,13 +89,13 @@ def read_solarsystem(settings,system_file='example_system.dat'):
             else: continue
             
         beta = 0.5
-        alpha = beta * grav_const * s['mass'] / c          # quantity related to PR drag to be used later
+        alpha = beta * grav_const * s['mass'].item() / c          # quantity related to PR drag to be used later
         tpr = disk[i,dlabel.index('r')]**2 / (4 * alpha)                      # yr
-        torbit = np.sqrt(disk[i,dlabel.index('r')]**3 / s['mass'].values[0])  # yr
+        torbit = np.sqrt(disk[i,dlabel.index('r')]**3 / s['mass'].item())  # yr
         if i==2: tcoll = torbit / (4*np.pi * (disk[1,dlabel.index('nzodis')] + disk[2,dlabel.index('nzodis')]) * 1e-7) # yr
         else: tcoll = torbit / (4*np.pi * disk[i,dlabel.index('nzodis')] * 1e-7)    # yr
         disk[i,dlabel.index('eta')] = tpr / tcoll
-        disk[i,dlabel.index('i')] = s['I']
+        disk[i,dlabel.index('i')] = s['I'].item()
         
         i += 1
         

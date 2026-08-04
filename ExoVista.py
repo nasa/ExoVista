@@ -10,7 +10,7 @@ from exovista import read_solarsystem
 from exovista import Settings
 from exovista import make_starmap
 
-# ExoVista v2.5
+# ExoVista v2.6
 
 # Generates a universe of simulated planetary systems based on a stellar target list.
 
@@ -25,15 +25,15 @@ if __name__ == '__main__':
 
     settings = Settings.Settings(timemax=10.0, output_dir='output') # "standard" configuration
     
-    #target_list_file = 'master_target_list-usingDR2-50_pc.txt'
-    target_list_file = 'target_list8.txt'
-    stars, nexozodis = load_stars.load_stars(target_list_file)
+    #target_list_file = 'src/exovista/data/master_target_list-usingDR2-50_pc.txt'
+    target_list_file = 'src/exovista/data/target_list8.txt'
+    stars, nexozodis = load_stars(target_list_file)
     print('\n{0:d} stars in model ranges.'.format(len(stars)))
     
     spots = generate_starspots.generate_spots(stars, settings)
     
-    planets, albedos = generate_planets.generate_planets(stars, settings, usebins=True, addearth=True)
-    disks, compositions = generate_disks.generate_disks(stars, planets, settings, nexozodis=nexozodis)
+    planets, albedos = generate_planets(stars, settings, usebins=True, addearth=True)
+    disks, compositions = generate_disks(stars, planets, settings, nexozodis=nexozodis)
     print('Generating scenes. (This may take a while.)')
     
     if parallel:
@@ -50,11 +50,11 @@ if __name__ == '__main__':
             imax = (i+1)*percore
             inputs.append([stars.iloc[imin:imax],spots.iloc[imin:imax],planets[imin:imax],disks[imin:imax],albedos[imin:imax],compositions[imin:imax],settings])
             
-        pool.starmap(generate_scene.generate_scene, [inputs[j][:] for j in range(0,cores)])
+        pool.starmap(generate_scene, [inputs[j][:] for j in range(0,cores)])
         pool.close()
         pool.join()
     else:
-        generate_scene.generate_scene(stars,spots,planets,disks,albedos,compositions,settings)
+        generate_scene(stars,spots,planets,disks,albedos,compositions,settings)
 
     print('Done')
 

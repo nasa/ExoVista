@@ -14,6 +14,7 @@ class Settings():
     lambdamin:    float = 0.3
     lambdamax:    float = 1.0
     hires:         bool = False    # set to True to use the planet spectrum resolution for the disk
+    mapsize:        int = 1800     # size of the limb-darkening map for the star in pixels
     
     # planet population parameters
     seed:           int = None     # RNG seed
@@ -54,10 +55,6 @@ class Settings():
     output_dir:     str = 'output'
     overwrite:     bool = False    # set to True to automatically overwrite existing FITS files
     starspots:     bool = True
-
-    # stellar model parameters
-    nlat_star = 500
-    nlon_star = 1000
     
     PRESET_PATH = Path(__file__).parent / 'presets'
     

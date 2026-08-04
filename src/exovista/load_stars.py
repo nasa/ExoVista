@@ -5,7 +5,7 @@ import pandas as pd
 from exovista.constants import *
 
 def load_target_list(target_list_file):
-
+    
     # Read in target list.
     
     fin = open(target_list_file,'r')
@@ -115,7 +115,7 @@ def load_target_list(target_list_file):
     return target_list
 
 def load_stars(target_list_file):
-
+    
     target_list = load_target_list(target_list_file)
     
     # Filter down target list.

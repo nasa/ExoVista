@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
-from scipy.interpolate import interp2d
+from scipy.interpolate import RectBivariateSpline
 from os import path,mkdir,system,listdir,remove
 from astropy.io import fits
 from datetime import datetime
@@ -31,8 +31,8 @@ def load_lqsca(lqq_dir, composition, rdust, rdust_boundaries, lam):
     Qsca_array = np.zeros((nsizes,nlambda))
 
     for i in range(0,nsizes):
-    
-        lqq_file = lqq_dir + composition + '/' + composition + '-s_{0:.4f}-smin_{1:.4f}-smax_{2:.4f}-dnds~s^-3.5.lqq'.format(rdust[i],rdust_boundaries[i],rdust_boundaries[i+1])
+        
+        lqq_file = str(lqq_dir) + '/' + composition + '/' + composition + '-s_{0:.4f}-smin_{1:.4f}-smax_{2:.4f}-dnds~s^-3.5.lqq'.format(rdust[i],rdust_boundaries[i],rdust_boundaries[i+1])
         
         # read the file
         fin = open(lqq_file,'r')
@@ -77,7 +77,7 @@ def load_lqabs(lqq_dir, composition, rdust, rdust_boundaries, lam):
 
     for i in range(0,nsizes):
     
-        lqq_file = lqq_dir + composition + '/' + composition + '-s_{0:.4f}-smin_{1:.4f}-smax_{2:.4f}-dnds~s^-3.5.lqq'.format(rdust[i],rdust_boundaries[i],rdust_boundaries[i+1])
+        lqq_file = str(lqq_dir) + '/' + composition + '/' + composition + '-s_{0:.4f}-smin_{1:.4f}-smax_{2:.4f}-dnds~s^-3.5.lqq'.format(rdust[i],rdust_boundaries[i],rdust_boundaries[i+1])
         
         # read the file
         fin = open(lqq_file,'r')
@@ -227,20 +227,20 @@ def generate_scene(stars, spots, planets, disks, albedos, compositions, settings
 
         # ----- COMPUTE THE LIMB DARKENING MASK FOR THE STAR -----
         print("Computing limb darkening for star {0:d}...".format(s['ID']))
-        mapsize = 1800
         u1=0.0473
         u2=0.0841 # solar limb darkening pending star-by-star values
-        mu = np.zeros((mapsize,mapsize))
-        ld_mask = np.zeros((mapsize,mapsize))
-        for j in range(0,mapsize):
-            for k in range(0,mapsize):
-                mu[j,k] = np.sqrt((mapsize/2)**2 - (j-mapsize/2)**2 - (k-mapsize/2)**2) / (mapsize/2)
+        mu = np.zeros((settings.mapsize,settings.mapsize))
+        ld_mask = np.zeros((settings.mapsize,settings.mapsize))
+        for j in range(0,settings.mapsize):
+            for k in range(0,settings.mapsize):
+                mu[j,k] = np.sqrt((settings.mapsize/2)**2 - (j-settings.mapsize/2)**2 - (k-settings.mapsize/2)**2) / (settings.mapsize/2)
+                #mu[j,k] = np.sqrt((settings.mapsize*scale/2)**2 - (j-settings.mapsize/2)**2 - (k-settings.mapsize/2)**2) / (msettings.apsize*scale/2) # Placeholder for eventual lambda/D calculation
         mu2 = np.maximum(1-mu,0)
         ld_mask = 1 - (u1+1) * mu2 - u2 * mu2**2
         ld_mask = np.maximum(ld_mask/mu,0)
         ld_mask = np.nan_to_num(ld_mask)
         
-        star_area = np.sum(ld_mask)*4/np.pi/mapsize**2
+        star_area = np.sum(ld_mask)*4/np.pi/settings.mapsize**2
         
         # ----- START OF DISK IMAGING ----
         # Now we image the disk
@@ -287,12 +287,14 @@ def generate_scene(stars, spots, planets, disks, albedos, compositions, settings
             if settings.starspots:
                 fstarhires = make_starmap.get_combined_spectrum(s,sp,lon_center=0.,lat_center=lat_0,mask=ld_mask,star_area=star_area)   # Implement the wavelengths more cleanly here
                 #make_starmap.star_map_ortho(s, sp, mask=ld_mask, lon_center=0., lat_center=lat_0) # for testing and creating images of the star
+                #cube_temp = make_starmap.get_data_cube(s, sp, mask=ld_mask, lon_center=0., lat_center=lat_0) # for testing and creating images of the star
             else:
                 fstarhires = make_starmap.get_quiet_spectrum(s,star_area=star_area)
         else:
             if settings.starspots:
                 fstarhires = make_starmap.get_combined_spectrum(s,sp,lon_center=0.,lat_center=lat_0,mask=ld_mask,star_area=star_area)
                 #make_starmap.star_map_ortho(s, sp, mask=ld_mask, lon_center=0., lat_center=lat_0) # for testing and creating images of the star
+                #cube_temp = make_starmap.get_data_cube(s, sp, mask=ld_mask, lon_center=0., lat_center=lat_0) # for testing and creating images of the star
             else:
                 fstarhires = make_starmap.get_quiet_spectrum(s,star_area=star_area)
                 
@@ -409,7 +411,7 @@ def generate_scene(stars, spots, planets, disks, albedos, compositions, settings
             spots_time = []
                         
             for it in range(0,ntimes):
-                if it%16==0: print('Star {0:d}, integration step {1:d}/{2:d}'.format(s['ID'],it,ntimes))
+                if it%64==0: print('Star {0:d}, integration step {1:d}/{2:d}'.format(s['ID'],it,ntimes))
                 # Integrate forward in time
                 desired_time = it * settings.dt # dt is in years
                 cart_end,tlist,transmaster = nbody.nbody(cart0,GMvector,Rvector,s['I'],curr_time,desired_time)
@@ -607,13 +609,15 @@ def generate_scene(stars, spots, planets, disks, albedos, compositions, settings
                     # data is geometric albedo
                     if settings.starspots:
                         for ii in range(0,ntimes):
-                            if ii%16==0: print('Star {0:d}, planet {1:d}, calculating spectra, step {2:d}/{3:d}'.format(s['ID'],ip,ii,ntimes))
+                            if ii%64==0: print('Star {0:d}, planet {1:d}, calculating spectra, step {2:d}/{3:d}'.format(s['ID'],ip,ii,ntimes))
                             fstar_n = make_starmap.get_combined_spectrum(s,sp,lon_center=dlongsign[ii],lat_center=dlatsign[ii],planet=ip,index=ii,mask=ld_mask,star_area=star_area)
                             if ip==1: sfluxtest[ii] = fstar_n[144]
                             fp[ii] = data * Rpor2[ii] * phasefunc[ii] * fstar_n
                             #make_starmap.star_map_ortho(s, sp, mask=ld_mask, lon_center=dlongsign[ii], lat_center=dlatsign[ii],planet=ip, index=ii) # for testing and creating images of the star
                     else:
-                        for ii in range(0,ntimes): fp[ii] = data * Rpor2[ii] * phasefunc[ii] * fstarhires
+                        for ii in range(0,ntimes):
+                            if ii%64==0: print('Star {0:d}, planet {1:d}, calculating spectra, step {2:d}/{3:d}'.format(s['ID'],ip,ii,ntimes))
+                            fp[ii] = data * Rpor2[ii] * phasefunc[ii] * fstarhires
                         
                 # EXOPLANET INPUT MODEL CASE 2: The model is phase-resolved
                 if len(data0.shape)==2: # in this case, data0 is geometric albedo times the phase function (gI)
@@ -624,26 +628,27 @@ def generate_scene(stars, spots, planets, disks, albedos, compositions, settings
                     phase_indices = f(beta*180./np.pi)
                     phase_indices = np.maximum(phase_indices, 0)
                     phase_indices = np.minimum(phase_indices, len(phi)-1)
-                    phase_arg = np.argsort(np.argsort(phase_indices))
                     
                     # Now interpolate to the desired phases and wavelengths
-                    # result is phase x plambda array of gI values                    
-                    f2 = interp2d(np.arange(len(data0[0])),plambda0,data0,kind='cubic')
-                    data = f2(phase_indices,hires)
-                    data = np.maximum(data,0)
-
-                    for di in range(0,len(data)): data[di] = data[di][phase_arg]
-                    data = np.transpose(data)
+                    # result is phase x plambda array of gI values
+                    f2 = RectBivariateSpline(np.arange(len(data0[0])),plambda0,data0.T)
                     
                     # calculate planet flux (modulo some unimportant factors)
                     # data is geometric albedo times phase function
                     if settings.starspots:
                         for ii in range(0,ntimes):
+                            if ii%64==0: print('Star {0:d}, planet {1:d}, calculating spectra, step {2:d}/{3:d}'.format(s['ID'],ip,ii,ntimes))
+                            data = f2(phase_indices[ii],hires)
+                            data = np.maximum(data,0)
                             fstar_n = make_starmap.get_combined_spectrum(s,sp,lon_center=dlongsign[ii],lat_center=dlatsign[ii],planet=ip,index=ii,mask=ld_mask,star_area=star_area)
-                            fp[ii] = data[ii] * Rpor2[ii] * fstar_n
+                            fp[ii] = data * Rpor2[ii] * fstar_n
                             #make_starmap.star_map_ortho(s, sp, mask=ld_mask, lon_center=dlongsign[ii], lat_center=dlatsign[ii],planet=ip, index=ii) # for testing and creating images of the star
                     else:
-                        for ii in range(0,ntimes): fp[ii] = data[ii] * Rpor2[ii] * fstarhires
+                        for ii in range(0,ntimes):
+                            if ii%64==0: print('Star {0:d}, planet {1:d}, calculating spectra, step {2:d}/{3:d}'.format(s['ID'],ip,ii,ntimes))
+                            data = f2(phase_indices[ii],hires)
+                            data = np.maximum(data,0)
+                            fp[ii] = data * Rpor2[ii] * fstarhires
                     
         
                 # EXOPLANET INPUT MODEL CASE 3: The model is resolved by 
@@ -692,34 +697,37 @@ def generate_scene(stars, spots, planets, disks, albedos, compositions, settings
                     lon_indices = np.minimum(lon_indices,len(phi)-1)
                     lon_arg = np.argsort(np.argsort(lon_indices))
 
-                    # I don't know how I got this bit working. Change it at your own risk.
+                    # interpolation to compute the phase function at the desired latitude
                     dataslice = []                    
                     wlist = np.arange(len(data0))      # placeholder index to keep the wavelength dimension while flattening the latitude
                     llist = np.arange(len(data0[0,0]))
                     
                     for ii in range(0,len(data0[0,0])):
                         dslice = data0[:,ii,:]
-                        fi = interp2d(llist,wlist,dslice,kind='cubic')
-                        tempgrid = np.transpose(fi([lat_indices],wlist)[:,0])
+                        fi = RectBivariateSpline(llist,wlist,dslice.T)
+                        tempgrid = np.transpose(fi([lat_indices],wlist)[0])
                         dataslice.append(tempgrid)
 
                     # This array is (should be) longitude x wavelength.
                     dataslice = np.transpose(np.array(dataslice))
-                    f3 = interp2d(np.arange(len(dataslice[0])),plambda0,dataslice,kind='cubic')
-                    
-                    data = f3(lon_indices,hires)
-                    data = np.maximum(data,0)
-                    for di in range(0,len(data)): data[di] = data[di][lon_arg]
-                    data = np.transpose(data)
+                    f3 = RectBivariateSpline(np.arange(len(dataslice[0])),plambda0,dataslice.T)
                     
                     # calculate planet flux (modulo some unimportant factors)
                     # data is geometric albedo times phase function
                     if settings.starspots:
                         for ii in range(0,ntimes):
+                            if ii%64==0: print('Star {0:d}, planet {1:d}, calculating spectra, step {2:d}/{3:d}'.format(s['ID'],ip,ii,ntimes))
+                            data = f3(lon_indices[ii],hires)
+                            data = np.maximum(data,0)
                             fstar_n = make_starmap.get_combined_spectrum(s,sp,lon_center=dlong[ii]-np.pi,lat_center=0.,mask=ld_mask,star_area=star_area)
-                            fp[ii] = data[ii] * Rpor2[ii] * fstar_n
+                            fp[ii] = data * Rpor2[ii] * fstar_n
+                            #make_starmap.star_map_ortho(s, sp, mask=ld_mask, lon_center=dlongsign[ii], lat_center=dlatsign[ii],planet=ip, index=ii) # for testing and creating images of the star
                     else:
-                        for ii in range(0,ntimes): fp[ii] = data[ii] * Rpor2[ii] * fstarhires
+                        for ii in range(0,ntimes):
+                            if ii%64==0: print('Star {0:d}, planet {1:d}, calculating spectra, step {2:d}/{3:d}'.format(s['ID'],ip,ii,ntimes))
+                            data = f3(lon_indices[ii],hires)
+                            data = np.maximum(data,0)
+                            fp[ii] = data[ii] * Rpor2[ii] * fstarhires
                     
                 # Now that we have fp, we can bin it by wavelength
                 # and divide by the observer's fstar to get contrast
@@ -1109,7 +1117,7 @@ def rgen(numx, numy=0):
     return r,x,y
 
 
-######### WARNING: THIS ROUTINE IS LIKELY TO BE REWRITTEN #########
+######### WARNING: OBSOLETE. INCLUDED FOR LEGACY FUNCTIONALITY ONLY. #########
 def get_stellar_flux(s, lam, path='./', spectrum = None):
     # INPUTS
     # s: star structure
