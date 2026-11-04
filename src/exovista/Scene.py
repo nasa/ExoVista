@@ -19,18 +19,19 @@ class Scene():
             exit()
 
         self.version = 0.
+        self.hstar = 0
         if 'VERSION' in self.scene[0].header:
             self.version = self.scene[0].header['VERSION']            
             
         if self.version <= 2.1:
             self.specstart = 15
             self.hstar = 3
-        elif version <= 2.4:
+        elif self.version <= 2.4:
             specstart = 16
-            hstar = 4
+            self.hstar = 4
         else:
             specstart = 16
-            hstar = 5
+            self.hstar = 5
             
         self.star_ext = self.hstar
         self.planet_ext = self.hstar+1 #first planet extension
