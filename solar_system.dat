@@ -11,6 +11,7 @@ logg    4.4
 Teff    5778.
 mass    1.0
 rstar   1.0
+rotper	27.0
 PA      30.0
 I       60.0
 SpotCoverage	0.005

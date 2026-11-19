@@ -1,6 +1,7 @@
 import astropy.io.fits
 import numpy as np
 import scipy.interpolate
+from exovista.constants import DATA_DIR
 
 # Try to find a better way to feed it a filename--star name? There might be duplicates.
 
@@ -27,10 +28,10 @@ class Scene():
             self.specstart = 15
             self.hstar = 3
         elif self.version <= 2.4:
-            specstart = 16
+            self.specstart = 16
             self.hstar = 4
         else:
-            specstart = 16
+            self.specstart = 16
             self.hstar = 5
             
         self.star_ext = self.hstar
@@ -199,7 +200,7 @@ class Scene():
         return self.nplanets
 
     def countPlanetTypes(self):
-        fbound = open('planetbins.dat','r')
+        fbound = open(str(DATA_DIR.joinpath('planetbins.dat')),'r')
         line = fbound.readline().strip()
         if line!='Radius':
             print('Error: wrong format in planetbins.dat')
